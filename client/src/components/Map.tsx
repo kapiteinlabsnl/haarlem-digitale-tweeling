@@ -86,13 +86,14 @@ declare global {
   }
 }
 
-const API_KEY = import.meta.env.VITE_FRONTEND_FORGE_API_KEY;
+const API_KEY_RAW = import.meta.env.VITE_FRONTEND_FORGE_API_KEY as string | undefined;
 const MAPS_JS_BASE_URL =
   import.meta.env.VITE_MAPS_JS_BASE_URL || "https://maps.googleapis.com";
 
 function loadMapScript() {
   return new Promise<void>((resolve, reject) => {
-    if (!API_KEY) {
+    const apiKey = String(API_KEY_RAW ?? "").trim();
+    if (!apiKey) {
       reject(new Error("Missing VITE_FRONTEND_FORGE_API_KEY"));
       return;
     }
@@ -102,8 +103,13 @@ function loadMapScript() {
       return;
     }
 
+    const params = new URLSearchParams({
+      key: apiKey,
+      v: "weekly",
+      libraries: "marker,places,geocoding,geometry",
+    });
     const script = document.createElement("script");
-    script.src = `${MAPS_JS_BASE_URL}/maps/api/js?key=${API_KEY}&v=weekly&libraries=marker,places,geocoding,geometry`;
+    script.src = `${MAPS_JS_BASE_URL}/maps/api/js?${params.toString()}`;
     script.async = true;
     script.crossOrigin = "anonymous";
     script.onload = () => {
