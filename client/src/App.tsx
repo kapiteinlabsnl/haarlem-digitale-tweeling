@@ -20,7 +20,7 @@ function AppRouter() {
         <Route path="/veelgestelde-vragen" component={FAQ} />
         <Route path="/contact" component={Contact} />
         <Route path="/404" component={NotFound} />
-        <Route component={NotFound} />
+        <Route component={Home} />
       </Switch>
     </WouterRouter>
   );
