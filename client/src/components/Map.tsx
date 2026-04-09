@@ -76,7 +76,7 @@
 
 /// <reference types="@types/google.maps" />
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePersistFn } from "@/hooks/usePersistFn";
 import { cn } from "@/lib/utils";
 
@@ -93,17 +93,27 @@ const FORGE_BASE_URL =
 const MAPS_PROXY_URL = `${FORGE_BASE_URL}/v1/maps/proxy`;
 
 function loadMapScript() {
-  return new Promise(resolve => {
+  return new Promise<void>((resolve, reject) => {
+    if (!API_KEY) {
+      reject(new Error("Missing VITE_FRONTEND_FORGE_API_KEY"));
+      return;
+    }
+
+    if (window.google?.maps) {
+      resolve();
+      return;
+    }
+
     const script = document.createElement("script");
     script.src = `${MAPS_PROXY_URL}/maps/api/js?key=${API_KEY}&v=weekly&libraries=marker,places,geocoding,geometry`;
     script.async = true;
     script.crossOrigin = "anonymous";
     script.onload = () => {
-      resolve(null);
+      resolve();
       script.remove(); // Clean up immediately
     };
     script.onerror = () => {
-      console.error("Failed to load Google Maps script");
+      reject(new Error("Failed to load Google Maps script"));
     };
     document.head.appendChild(script);
   });
@@ -124,9 +134,22 @@ export function MapView({
 }: MapViewProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const init = usePersistFn(async () => {
-    await loadMapScript();
+    try {
+      await loadMapScript();
+    } catch (error) {
+      console.error(error);
+      setMapError("Kaart kan niet worden geladen. Controleer de API-configuratie.");
+      return;
+    }
+
+    if (!window.google?.maps) {
+      setMapError("Kaartbibliotheek is niet beschikbaar.");
+      return;
+    }
+
     if (!mapContainer.current) {
       console.error("Map container not found");
       return;
@@ -148,6 +171,19 @@ export function MapView({
   useEffect(() => {
     init();
   }, [init]);
+
+  if (mapError) {
+    return (
+      <div
+        className={cn(
+          "w-full h-[500px] rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800",
+          className
+        )}
+      >
+        {mapError}
+      </div>
+    );
+  }
 
   return (
     <div ref={mapContainer} className={cn("w-full h-[500px]", className)} />
