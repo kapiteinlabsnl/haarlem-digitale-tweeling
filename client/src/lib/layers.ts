@@ -1,7 +1,10 @@
 export interface LayerConfig {
   id: string;
   name: string;
-  wfsLayer: string;
+  source: "haarlem-wfs" | "pdok-ogc-features";
+  wfsLayer?: string;
+  pdokCollectionUrl?: string;
+  pdokIdField?: string;
   icon?: string;
   color: string;
   visible: boolean;
@@ -34,9 +37,9 @@ export const themes: ThemeConfig[] = [
     description: "Klimaatdata, bodemkwaliteit en waterbeleid",
     color: "#2563EB",
     layers: [
-      { id: "bodemkwaliteit", name: "Bodemkwaliteitskaart", wfsLayer: "bodemkwaliteitskaart_2023", color: "#8B5CF6", visible: false, category: "klimaat" },
-      { id: "waterbeleid", name: "Ambitie beleid water", wfsLayer: "ambitie_beleid_water", color: "#3B82F6", visible: false, category: "klimaat" },
-      { id: "groen_potentie", name: "Groen potentie", wfsLayer: "groen_potentie", color: "#10B981", visible: false, category: "klimaat" },
+      { id: "bodemkwaliteit", name: "Bodemkwaliteitskaart", source: "haarlem-wfs", wfsLayer: "bodemkwaliteitskaart_2023", color: "#8B5CF6", visible: false, category: "klimaat" },
+      { id: "waterbeleid", name: "Ambitie beleid water", source: "haarlem-wfs", wfsLayer: "ambitie_beleid_water", color: "#3B82F6", visible: false, category: "klimaat" },
+      { id: "groen_potentie", name: "Groen potentie", source: "haarlem-wfs", wfsLayer: "groen_potentie", color: "#10B981", visible: false, category: "klimaat" },
     ],
   },
   {
@@ -46,8 +49,8 @@ export const themes: ThemeConfig[] = [
     description: "Zonnepanelen, laadpalen en duurzame energie",
     color: "#F59E0B",
     layers: [
-      { id: "zonnekansenkaart", name: "Zonnekansenkaart", wfsLayer: "zonnekansenkaart", color: "#F59E0B", visible: false, category: "energie" },
-      { id: "laadpalen", name: "Laadpalen", wfsLayer: "laadpalen", color: "#10B981", visible: false, category: "energie" },
+      { id: "zonnekansenkaart", name: "Zonnekansenkaart", source: "haarlem-wfs", wfsLayer: "zonnekansenkaart", color: "#F59E0B", visible: false, category: "energie" },
+      { id: "laadpalen", name: "Laadpalen", source: "haarlem-wfs", wfsLayer: "laadpalen", color: "#10B981", visible: false, category: "energie" },
     ],
   },
   {
@@ -57,10 +60,10 @@ export const themes: ThemeConfig[] = [
     description: "Bomen, groenvoorzieningen, speeltoestellen en hondenuitlaatgebieden",
     color: "#16A34A",
     layers: [
-      { id: "bomen", name: "Bomen", wfsLayer: "bor_bomen", color: "#16A34A", visible: false, category: "natuur" },
-      { id: "speeltoestellen", name: "Speeltoestellen", wfsLayer: "speeltoestellen", color: "#8B5CF6", visible: false, category: "natuur" },
-      { id: "hondlosloop", name: "Hondenuitlaatgebieden", wfsLayer: "hondlosloop", color: "#D97706", visible: false, category: "natuur" },
-      { id: "openbaar_groen", name: "Openbaar groen", wfsLayer: "openbaar_groen", color: "#059669", visible: false, category: "natuur" },
+      { id: "bomen", name: "Bomen", source: "haarlem-wfs", wfsLayer: "bor_bomen", color: "#16A34A", visible: false, category: "natuur" },
+      { id: "speeltoestellen", name: "Speeltoestellen", source: "haarlem-wfs", wfsLayer: "speeltoestellen", color: "#8B5CF6", visible: false, category: "natuur" },
+      { id: "hondlosloop", name: "Hondenuitlaatgebieden", source: "haarlem-wfs", wfsLayer: "hondlosloop", color: "#D97706", visible: false, category: "natuur" },
+      { id: "openbaar_groen", name: "Openbaar groen", source: "haarlem-wfs", wfsLayer: "openbaar_groen", color: "#059669", visible: false, category: "natuur" },
     ],
   },
   {
@@ -70,10 +73,10 @@ export const themes: ThemeConfig[] = [
     description: "Wijken, buurten, kinderopvang en onderwijsinstellingen",
     color: "#EC4899",
     layers: [
-      { id: "wijken", name: "Wijken", wfsLayer: "wijk", color: "#EC4899", visible: false, category: "wonen" },
-      { id: "buurten", name: "Buurten", wfsLayer: "buurt", color: "#F472B6", visible: false, category: "wonen" },
-      { id: "kinderopvang", name: "Kinderopvanglocaties", wfsLayer: "kinderopvanglocaties", color: "#A855F7", visible: false, category: "wonen" },
-      { id: "onderwijs", name: "Onderwijsinstellingen", wfsLayer: "onderwijsinstellingen", color: "#6366F1", visible: false, category: "wonen" },
+      { id: "wijken", name: "Wijken", source: "haarlem-wfs", wfsLayer: "wijk", color: "#EC4899", visible: false, category: "wonen" },
+      { id: "buurten", name: "Buurten", source: "haarlem-wfs", wfsLayer: "buurt", color: "#F472B6", visible: false, category: "wonen" },
+      { id: "kinderopvang", name: "Kinderopvanglocaties", source: "haarlem-wfs", wfsLayer: "kinderopvanglocaties", color: "#A855F7", visible: false, category: "wonen" },
+      { id: "onderwijs", name: "Onderwijsinstellingen", source: "haarlem-wfs", wfsLayer: "onderwijsinstellingen", color: "#6366F1", visible: false, category: "wonen" },
     ],
   },
   {
@@ -83,9 +86,29 @@ export const themes: ThemeConfig[] = [
     description: "Gemeentegrenzen, stadsdelen en postcodegebieden",
     color: "#6366F1",
     layers: [
-      { id: "gemeente_grenzen", name: "Gemeentegrenzen", wfsLayer: "gemeente_grenzen", color: "#6366F1", visible: false, category: "topografie" },
-      { id: "stadsdelen", name: "Stadsdelen", wfsLayer: "stadsdeel", color: "#8B5CF6", visible: false, category: "topografie" },
-      { id: "postcode4", name: "Postcode 4 posities", wfsLayer: "postcode4", color: "#A78BFA", visible: false, category: "topografie" },
+      { id: "gemeente_grenzen", name: "Gemeentegrenzen", source: "haarlem-wfs", wfsLayer: "gemeente_grenzen", color: "#6366F1", visible: false, category: "topografie" },
+      { id: "stadsdelen", name: "Stadsdelen", source: "haarlem-wfs", wfsLayer: "stadsdeel", color: "#8B5CF6", visible: false, category: "topografie" },
+      { id: "postcode4", name: "Postcode 4 posities", source: "haarlem-wfs", wfsLayer: "postcode4", color: "#A78BFA", visible: false, category: "topografie" },
+      {
+        id: "pdok_bag_panden",
+        name: "PDOK BAG panden",
+        source: "pdok-ogc-features",
+        pdokCollectionUrl: "https://api.pdok.nl/kadaster/bag/ogc/v2/collections/pand/items",
+        pdokIdField: "identificatie",
+        color: "#0EA5E9",
+        visible: false,
+        category: "topografie",
+      },
+      {
+        id: "pdok_bestuurlijke_gebieden",
+        name: "PDOK bestuurlijke gebieden",
+        source: "pdok-ogc-features",
+        pdokCollectionUrl: "https://api.pdok.nl/kadaster/brk-administratieve-eenheden/ogc/v1/collections/administratieveeenheden/items",
+        pdokIdField: "inspireid_localid",
+        color: "#4F46E5",
+        visible: false,
+        category: "topografie",
+      },
     ],
   },
   {
@@ -95,10 +118,10 @@ export const themes: ThemeConfig[] = [
     description: "Parkeergarages, parkeerzones, lichtmasten en riolering",
     color: "#64748B",
     layers: [
-      { id: "parkeergarages", name: "Parkeergarages", wfsLayer: "parkeergarages", color: "#3B82F6", visible: false, category: "infrastructuur" },
-      { id: "parkeerzones", name: "Parkeerzones", wfsLayer: "parkeerzones", color: "#64748B", visible: false, category: "infrastructuur" },
-      { id: "lichtmasten", name: "Lichtmasten", wfsLayer: "bor_lichtmasten", color: "#EAB308", visible: false, category: "infrastructuur" },
-      { id: "afvalinzamel", name: "Afvalinzamelpunten", wfsLayer: "bor_afvalinzamel", color: "#84CC16", visible: false, category: "infrastructuur" },
+      { id: "parkeergarages", name: "Parkeergarages", source: "haarlem-wfs", wfsLayer: "parkeergarages", color: "#3B82F6", visible: false, category: "infrastructuur" },
+      { id: "parkeerzones", name: "Parkeerzones", source: "haarlem-wfs", wfsLayer: "parkeerzones", color: "#64748B", visible: false, category: "infrastructuur" },
+      { id: "lichtmasten", name: "Lichtmasten", source: "haarlem-wfs", wfsLayer: "bor_lichtmasten", color: "#EAB308", visible: false, category: "infrastructuur" },
+      { id: "afvalinzamel", name: "Afvalinzamelpunten", source: "haarlem-wfs", wfsLayer: "bor_afvalinzamel", color: "#84CC16", visible: false, category: "infrastructuur" },
     ],
   },
   {
@@ -108,8 +131,8 @@ export const themes: ThemeConfig[] = [
     description: "Rijksmonumenten, beschermde stadsgezichten en cultureel erfgoed",
     color: "#B45309",
     layers: [
-      { id: "monumenten", name: "Rijksmonumenten", wfsLayer: "rce_rijksmonumenten", color: "#B45309", visible: false, category: "cultuur" },
-      { id: "beschermd_stadsgezicht", name: "Beschermd stadsgezicht", wfsLayer: "beschermd_stadsgezicht", color: "#92400E", visible: false, category: "cultuur" },
+      { id: "monumenten", name: "Rijksmonumenten", source: "haarlem-wfs", wfsLayer: "rce_rijksmonumenten", color: "#B45309", visible: false, category: "cultuur" },
+      { id: "beschermd_stadsgezicht", name: "Beschermd stadsgezicht", source: "haarlem-wfs", wfsLayer: "beschermd_stadsgezicht", color: "#92400E", visible: false, category: "cultuur" },
     ],
   },
 ];

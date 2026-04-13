@@ -7,6 +7,8 @@ import { Header } from "@/components/Header";
 import { MapView } from "@/components/Map";
 import { themes, HAARLEM_CENTER, DEFAULT_ZOOM, buildWfsUrl } from "@/lib/layers";
 import type { LayerConfig } from "@/lib/layers";
+import { fetchPdokFeatures, getMapBbox } from "@/lib/pdok";
+import type { PdokFeature, PdokGeometry } from "@/lib/pdok";
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { useParams } from "wouter";
 import {
@@ -26,6 +28,7 @@ import {
   Info,
   X,
   Layers,
+  Download,
 } from "lucide-react";
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -48,6 +51,44 @@ function hexToRgb(hex: string) {
 function createMarkerSvg(color: string) {
   const { r, g, b } = hexToRgb(color);
   return `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32"><path d="M12 0C5.4 0 0 5.4 0 12c0 9 12 20 12 20s12-11 12-20C24 5.4 18.6 0 12 0z" fill="rgb(${r},${g},${b})"/><circle cx="12" cy="12" r="5" fill="white" opacity="0.9"/></svg>`)}`;
+}
+
+function getGeometryCoordinates(geometry: PdokGeometry | null | undefined): [number, number][] {
+  if (!geometry) return [];
+
+  if (geometry.type === "Point") return [geometry.coordinates as [number, number]];
+  if (geometry.type === "MultiPoint" || geometry.type === "LineString") {
+    return geometry.coordinates as [number, number][];
+  }
+  if (geometry.type === "MultiLineString" || geometry.type === "Polygon") {
+    return (geometry.coordinates as [number, number][][]).flat();
+  }
+  if (geometry.type === "MultiPolygon") {
+    return (geometry.coordinates as [number, number][][][]).flat(2);
+  }
+  if (geometry.type === "GeometryCollection") {
+    return geometry.geometries.flatMap((item: PdokGeometry) => getGeometryCoordinates(item));
+  }
+
+  return [];
+}
+
+function featureIntersectsBounds(feature: PdokFeature, bounds: google.maps.LatLngBounds): boolean {
+  const coordinates = getGeometryCoordinates(feature.geometry);
+  for (const [lng, lat] of coordinates) {
+    if (bounds.contains(new google.maps.LatLng(lat, lng))) return true;
+  }
+  return false;
+}
+
+function filterFeaturesByQuery(features: PdokFeature[], query: string): PdokFeature[] {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return features;
+
+  return features.filter((feature) => {
+    const properties = feature.properties || {};
+    return Object.values(properties).some((value) => String(value).toLowerCase().includes(normalized));
+  });
 }
 
 interface FeatureInfoProps {
@@ -114,7 +155,10 @@ export default function Twin() {
   const mapRef = useRef<google.maps.Map | null>(null);
   const dataLayersRef = useRef<Map<string, google.maps.Data>>(new Map());
   const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement[]>>(new Map());
+  const rawFeaturesRef = useRef<Map<string, PdokFeature[]>>(new Map());
+  const visibleFeaturesRef = useRef<Map<string, PdokFeature[]>>(new Map());
   const [mapReady, setMapReady] = useState(false);
+  const [viewportTick, setViewportTick] = useState(0);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [expandedThemes, setExpandedThemes] = useState<Set<string>>(
@@ -123,8 +167,14 @@ export default function Twin() {
   const [activeLayers, setActiveLayers] = useState<Set<string>>(new Set());
   const [loadingLayers, setLoadingLayers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+  const [pdokFilter, setPdokFilter] = useState("");
   const [selectedFeature, setSelectedFeature] = useState<google.maps.Data.Feature | null>(null);
   const [addressSearch, setAddressSearch] = useState("");
+
+  const layerById = useMemo(
+    () => new Map(themes.flatMap((theme) => theme.layers.map((layer) => [layer.id, layer] as const))),
+    []
+  );
 
   const toggleTheme = useCallback((themeId: string) => {
     setExpandedThemes((prev) => {
@@ -146,6 +196,80 @@ export default function Twin() {
       markers.forEach((m) => (m.map = null));
       markersRef.current.delete(layerId);
     }
+    visibleFeaturesRef.current.delete(layerId);
+  }, []);
+
+  const renderLayerFeatures = useCallback((layer: LayerConfig, features: PdokFeature[]) => {
+    if (!mapRef.current || features.length === 0) return;
+
+    const firstGeomType = features[0]?.geometry?.type || "";
+    const isPoint = firstGeomType === "Point" || firstGeomType === "MultiPoint";
+
+    if (isPoint) {
+      const newMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
+      const markerIcon = createMarkerSvg(layer.color);
+
+      for (const feature of features) {
+        const geometry = feature.geometry;
+        if (!geometry || (geometry.type !== "Point" && geometry.type !== "MultiPoint")) continue;
+
+        let lat: number, lng: number;
+        if (geometry.type === "MultiPoint") {
+          [lng, lat] = geometry.coordinates[0];
+        } else {
+          [lng, lat] = geometry.coordinates;
+        }
+
+        if (isNaN(lat) || isNaN(lng)) continue;
+
+        const img = document.createElement("img");
+        img.src = markerIcon;
+        img.style.width = "24px";
+        img.style.height = "32px";
+
+        const marker = new google.maps.marker.AdvancedMarkerElement({
+          map: mapRef.current,
+          position: { lat, lng },
+          content: img,
+          title: String((feature.properties as Record<string, unknown>)?.naam ?? (feature.properties as Record<string, unknown>)?.name ?? layer.name),
+        });
+
+        marker.addListener("click", () => {
+          const fakeFeature = {
+            forEachProperty: (cb: (value: unknown, key: string) => void) => {
+              Object.entries(feature.properties || {}).forEach(([k, v]) => cb(v, k));
+            },
+          } as google.maps.Data.Feature;
+          setSelectedFeature(fakeFeature);
+        });
+
+        newMarkers.push(marker);
+      }
+
+      markersRef.current.set(layer.id, newMarkers);
+    } else {
+      const dataLayer = new google.maps.Data({ map: mapRef.current });
+      const { r, g, b } = hexToRgb(layer.color);
+
+      dataLayer.setStyle({
+        fillColor: `rgb(${r},${g},${b})`,
+        fillOpacity: 0.25,
+        strokeColor: `rgb(${r},${g},${b})`,
+        strokeWeight: 2,
+        strokeOpacity: 0.8,
+      });
+
+      dataLayer.addGeoJson({
+        type: "FeatureCollection",
+        features,
+      } as never);
+
+      dataLayer.addListener("click", (event: google.maps.Data.MouseEvent) => {
+        setSelectedFeature(event.feature);
+      });
+
+      dataLayersRef.current.set(layer.id, dataLayer);
+    }
   }, []);
 
   const addLayerToMap = useCallback(async (layer: LayerConfig) => {
@@ -154,87 +278,32 @@ export default function Twin() {
     setLoadingLayers((prev) => new Set(prev).add(layer.id));
 
     try {
-      const url = buildWfsUrl(layer.wfsLayer, 800);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const geojson = await response.json();
+      let features: PdokFeature[] = [];
 
-      if (!mapRef.current) return;
-
-      const features = geojson.features || [];
-      if (features.length === 0) {
-        setLoadingLayers((prev) => {
-          const next = new Set(prev);
-          next.delete(layer.id);
-          return next;
+      if (layer.source === "haarlem-wfs") {
+        if (!layer.wfsLayer) throw new Error(`Missing wfsLayer for ${layer.id}`);
+        const url = buildWfsUrl(layer.wfsLayer, 800);
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const geojson = await response.json();
+        features = (geojson.features || []) as PdokFeature[];
+      } else {
+        if (!layer.pdokCollectionUrl) throw new Error(`Missing pdokCollectionUrl for ${layer.id}`);
+        const bbox = getMapBbox(mapRef.current);
+        const pdok = await fetchPdokFeatures(layer.pdokCollectionUrl, {
+          limit: 800,
+          bbox: bbox ?? undefined,
         });
-        return;
+        features = pdok.features;
       }
 
-      const firstGeomType = features[0]?.geometry?.type || "";
-      const isPoint = firstGeomType === "Point" || firstGeomType === "MultiPoint";
+      rawFeaturesRef.current.set(layer.id, features);
+      const visibleFeatures =
+        layer.source === "pdok-ogc-features" ? filterFeaturesByQuery(features, pdokFilter) : features;
+      visibleFeaturesRef.current.set(layer.id, visibleFeatures);
 
-      if (isPoint) {
-        const newMarkers: google.maps.marker.AdvancedMarkerElement[] = [];
-        const markerIcon = createMarkerSvg(layer.color);
-
-        for (const feature of features) {
-          const coords = feature.geometry?.coordinates;
-          if (!coords) continue;
-
-          let lat: number, lng: number;
-          if (feature.geometry.type === "MultiPoint") {
-            [lng, lat] = coords[0];
-          } else {
-            [lng, lat] = coords;
-          }
-
-          if (isNaN(lat) || isNaN(lng)) continue;
-
-          const img = document.createElement("img");
-          img.src = markerIcon;
-          img.style.width = "24px";
-          img.style.height = "32px";
-
-          const marker = new google.maps.marker.AdvancedMarkerElement({
-            map: mapRef.current,
-            position: { lat, lng },
-            content: img,
-            title: feature.properties?.naam || feature.properties?.name || layer.name,
-          });
-
-          marker.addListener("click", () => {
-            const fakeFeature = {
-              forEachProperty: (cb: (value: unknown, key: string) => void) => {
-                Object.entries(feature.properties || {}).forEach(([k, v]) => cb(v, k));
-              },
-            } as google.maps.Data.Feature;
-            setSelectedFeature(fakeFeature);
-          });
-
-          newMarkers.push(marker);
-        }
-
-        markersRef.current.set(layer.id, newMarkers);
-      } else {
-        const dataLayer = new google.maps.Data({ map: mapRef.current });
-        const { r, g, b } = hexToRgb(layer.color);
-
-        dataLayer.setStyle({
-          fillColor: `rgb(${r},${g},${b})`,
-          fillOpacity: 0.25,
-          strokeColor: `rgb(${r},${g},${b})`,
-          strokeWeight: 2,
-          strokeOpacity: 0.8,
-        });
-
-        dataLayer.addGeoJson(geojson);
-
-        dataLayer.addListener("click", (event: google.maps.Data.MouseEvent) => {
-          setSelectedFeature(event.feature);
-        });
-
-        dataLayersRef.current.set(layer.id, dataLayer);
+      if (visibleFeatures.length > 0) {
+        renderLayerFeatures(layer, visibleFeatures);
       }
     } catch (err) {
       console.error(`Failed to load layer ${layer.id}:`, err);
@@ -245,7 +314,7 @@ export default function Twin() {
         return next;
       });
     }
-  }, []);
+  }, [pdokFilter, renderLayerFeatures]);
 
   const toggleLayer = useCallback(
     (layer: LayerConfig) => {
@@ -296,6 +365,25 @@ export default function Twin() {
     }
   }, [params.theme, mapReady]);
 
+  useEffect(() => {
+    if (!mapReady) return;
+
+    for (const layerId of Array.from(activeLayers)) {
+      const layer = layerById.get(layerId);
+      if (!layer || layer.source !== "pdok-ogc-features") continue;
+
+      const raw = rawFeaturesRef.current.get(layerId);
+      if (!raw) continue;
+
+      clearLayer(layerId);
+      const filtered = filterFeaturesByQuery(raw, pdokFilter);
+      visibleFeaturesRef.current.set(layerId, filtered);
+      if (filtered.length > 0) {
+        renderLayerFeatures(layer, filtered);
+      }
+    }
+  }, [activeLayers, clearLayer, layerById, mapReady, pdokFilter, renderLayerFeatures]);
+
   // Filter themes/layers by search
   const filteredThemes = useMemo(
     () =>
@@ -325,6 +413,57 @@ export default function Twin() {
     }
     return result;
   }, [activeLayers]);
+
+  const activePdokStats = useMemo(() => {
+    const stats: { id: string; name: string; visible: number; inViewport: number }[] = [];
+    const bounds = mapRef.current?.getBounds() ?? null;
+
+    for (const layerId of Array.from(activeLayers)) {
+      const layer = layerById.get(layerId);
+      if (!layer || layer.source !== "pdok-ogc-features") continue;
+
+      const features = visibleFeaturesRef.current.get(layerId) ?? [];
+      const inViewport = bounds
+        ? features.filter((feature) => featureIntersectsBounds(feature, bounds)).length
+        : features.length;
+      stats.push({
+        id: layerId,
+        name: layer.name,
+        visible: features.length,
+        inViewport,
+      });
+    }
+
+    return stats;
+  }, [activeLayers, layerById, pdokFilter, viewportTick]);
+
+  const exportActivePdokAsGeoJson = useCallback(() => {
+    const exportFeatures: PdokFeature[] = [];
+
+    for (const layerId of Array.from(activeLayers)) {
+      const layer = layerById.get(layerId);
+      if (!layer || layer.source !== "pdok-ogc-features") continue;
+      const layerFeatures = visibleFeaturesRef.current.get(layerId) ?? [];
+      exportFeatures.push(...layerFeatures);
+    }
+
+    if (exportFeatures.length === 0) {
+      window.alert("Geen PDOK data beschikbaar om te exporteren.");
+      return;
+    }
+
+    const payload = {
+      type: "FeatureCollection",
+      features: exportFeatures,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/geo+json" });
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `pdok-export-${Date.now()}.geojson`;
+    link.click();
+    URL.revokeObjectURL(objectUrl);
+  }, [activeLayers, layerById]);
 
   return (
     <div className="h-screen flex flex-col">
@@ -357,6 +496,23 @@ export default function Twin() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D52B1E]/30 focus:border-[#D52B1E] transition-colors"
               />
+            </div>
+            <div className="mt-3 space-y-2">
+              <input
+                type="text"
+                placeholder="Filter actieve PDOK eigenschappen..."
+                value={pdokFilter}
+                onChange={(e) => setPdokFilter(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D52B1E]/30 focus:border-[#D52B1E] transition-colors"
+              />
+              <button
+                type="button"
+                onClick={exportActivePdokAsGeoJson}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Exporteer actieve PDOK (GeoJSON)
+              </button>
             </div>
           </div>
 
@@ -424,9 +580,27 @@ export default function Twin() {
             ))}
           </div>
 
-          {/* Data source attribution */}
-          <div className="p-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-400 shrink-0">
-            Data: <a href="https://data.haarlem.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">data.haarlem.nl</a>
+          <div className="p-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 shrink-0 space-y-2">
+            {activePdokStats.length > 0 && (
+              <div className="space-y-1">
+                <div className="font-semibold text-gray-700">PDOK viewport samenvatting</div>
+                {activePdokStats.map((item) => (
+                  <div key={item.id}>
+                    {item.name}: {item.inViewport}/{item.visible}
+                  </div>
+                ))}
+              </div>
+            )}
+            <div>
+              Data:{" "}
+              <a href="https://data.haarlem.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
+                data.haarlem.nl
+              </a>{" "}
+              +{" "}
+              <a href="https://api.pdok.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
+                api.pdok.nl
+              </a>
+            </div>
           </div>
         </div>
 
@@ -471,6 +645,7 @@ export default function Twin() {
             onMapReady={(map) => {
               mapRef.current = map;
               setMapReady(true);
+              map.addListener("idle", () => setViewportTick((tick) => tick + 1));
               map.setOptions({
                 mapTypeControl: true,
                 mapTypeControlOptions: {
