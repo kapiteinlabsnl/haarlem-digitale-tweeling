@@ -27,6 +27,7 @@ import {
   Info,
   X,
   Layers,
+  Satellite,
 } from "lucide-react";
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -72,6 +73,61 @@ interface AhnInfoResult {
   sourceLayerName: string;
   value: string;
   raw: string;
+}
+
+type SentinelLayerMode = "S2_TRUE_COLOR" | "S2_NDVI" | "S5P_NO2";
+
+const SENTINEL_TOKEN_URL = "https://services.sentinel-hub.com/oauth/token";
+const SENTINEL_PROCESS_URL = "https://services.sentinel-hub.com/api/v1/process";
+const SENTINEL_CLIENT_ID_HARDCODED = "ee15a979-c44e-44cc-8014-b95b82f99b79";
+const SENTINEL_CLIENT_SECRET_HARDCODED = "PLAKfb95f935db9b40a68895d8bd07e3afa8";
+const SENTINEL_CLIENT_ID = (
+  SENTINEL_CLIENT_ID_HARDCODED || import.meta.env.VITE_SENTINEL_CLIENT_ID || ""
+).trim();
+const SENTINEL_CLIENT_SECRET = (
+  SENTINEL_CLIENT_SECRET_HARDCODED || import.meta.env.VITE_SENTINEL_CLIENT_SECRET || ""
+).trim();
+
+function toIsoDate(value: string, endOfDay = false): string {
+  return `${value}T${endOfDay ? "23:59:59" : "00:00:00"}Z`;
+}
+
+function getSentinelEvalscript(mode: SentinelLayerMode): string {
+  if (mode === "S2_NDVI") {
+    return `//VERSION=3
+function setup() {
+  return { input: ["B04", "B08"], output: { bands: 3 } };
+}
+function evaluatePixel(sample) {
+  const ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04 + 1e-6);
+  if (ndvi < 0) return [0.7, 0.2, 0.2];
+  if (ndvi < 0.2) return [0.9, 0.8, 0.2];
+  if (ndvi < 0.4) return [0.5, 0.8, 0.2];
+  if (ndvi < 0.6) return [0.2, 0.7, 0.2];
+  return [0.0, 0.45, 0.0];
+}`;
+  }
+  if (mode === "S5P_NO2") {
+    return `//VERSION=3
+function setup() {
+  return { input: ["NO2"], output: { bands: 3 } };
+}
+function evaluatePixel(sample) {
+  const v = Math.max(0, Math.min(1, sample.NO2 * 8000.0));
+  return [v, Math.max(0, 1.0 - v), Math.max(0, 1.0 - 2.0 * v)];
+}`;
+  }
+  return `//VERSION=3
+function setup() {
+  return { input: ["B04", "B03", "B02"], output: { bands: 3 } };
+}
+function evaluatePixel(sample) {
+  return [2.5 * sample.B04, 2.5 * sample.B03, 2.5 * sample.B02];
+}`;
+}
+
+function getSentinelCollection(mode: SentinelLayerMode): string {
+  return mode === "S5P_NO2" ? "sentinel-5p-l2" : "sentinel-2-l2a";
 }
 
 function parseWmsCapabilities(xmlText: string): ParsedWmsCapabilities {
@@ -233,6 +289,9 @@ export default function Twin() {
   const ahnTileLayersRef = useRef<Map<string, google.maps.ImageMapType>>(new Map());
   const ahnCapabilitiesRef = useRef<Map<string, ParsedWmsCapabilities>>(new Map());
   const ahnResolvedLayerRef = useRef<Map<string, string>>(new Map());
+  const sentinelOverlayRef = useRef<google.maps.GroundOverlay | null>(null);
+  const sentinelOverlayUrlRef = useRef<string | null>(null);
+  const sentinelTokenRef = useRef<{ token: string; expiresAt: number } | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -245,6 +304,13 @@ export default function Twin() {
   const [selectedFeature, setSelectedFeature] = useState<google.maps.Data.Feature | null>(null);
   const [selectedAhnInfo, setSelectedAhnInfo] = useState<AhnInfoResult | null>(null);
   const [addressSearch, setAddressSearch] = useState("");
+  const [sentinelOpen, setSentinelOpen] = useState(false);
+  const [sentinelMode, setSentinelMode] = useState<SentinelLayerMode>("S2_TRUE_COLOR");
+  const [sentinelFromDate, setSentinelFromDate] = useState("2023-06-01");
+  const [sentinelToDate, setSentinelToDate] = useState("2023-06-30");
+  const [sentinelCloud, setSentinelCloud] = useState(20);
+  const [sentinelLoading, setSentinelLoading] = useState(false);
+  const [sentinelError, setSentinelError] = useState<string | null>(null);
 
   const toggleTheme = useCallback((themeId: string) => {
     setExpandedThemes((prev) => {
@@ -445,6 +511,112 @@ export default function Twin() {
     [addressSearch]
   );
 
+  const clearSentinelOverlay = useCallback(() => {
+    if (sentinelOverlayRef.current) {
+      sentinelOverlayRef.current.setMap(null);
+      sentinelOverlayRef.current = null;
+    }
+    if (sentinelOverlayUrlRef.current) {
+      URL.revokeObjectURL(sentinelOverlayUrlRef.current);
+      sentinelOverlayUrlRef.current = null;
+    }
+  }, []);
+
+  const getSentinelToken = useCallback(async (): Promise<string> => {
+    const now = Date.now();
+    if (sentinelTokenRef.current && sentinelTokenRef.current.expiresAt - now > 30000) {
+      return sentinelTokenRef.current.token;
+    }
+
+    if (!SENTINEL_CLIENT_ID || !SENTINEL_CLIENT_SECRET) {
+      throw new Error("Sentinel credentials ontbreken. Stel VITE_SENTINEL_CLIENT_ID en VITE_SENTINEL_CLIENT_SECRET in.");
+    }
+
+    const body = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: SENTINEL_CLIENT_ID,
+      client_secret: SENTINEL_CLIENT_SECRET,
+    });
+    const response = await fetch(SENTINEL_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+    if (!response.ok) throw new Error(`Sentinel token mislukt (${response.status})`);
+    const json = (await response.json()) as { access_token: string; expires_in: number };
+    sentinelTokenRef.current = {
+      token: json.access_token,
+      expiresAt: Date.now() + json.expires_in * 1000,
+    };
+    return json.access_token;
+  }, []);
+
+  const renderSentinelOverlay = useCallback(async () => {
+    if (!mapRef.current) return;
+    const bounds = mapRef.current.getBounds();
+    if (!bounds) return;
+
+    setSentinelLoading(true);
+    setSentinelError(null);
+    try {
+      const token = await getSentinelToken();
+      const sw = bounds.getSouthWest();
+      const ne = bounds.getNorthEast();
+      const dataFilter: Record<string, unknown> = {
+        timeRange: {
+          from: toIsoDate(sentinelFromDate),
+          to: toIsoDate(sentinelToDate, true),
+        },
+      };
+      if (sentinelMode !== "S5P_NO2") {
+        dataFilter.maxCloudCoverage = sentinelCloud;
+      }
+
+      const payload = {
+        input: {
+          bounds: { bbox: [sw.lng(), sw.lat(), ne.lng(), ne.lat()] },
+          data: [{ type: getSentinelCollection(sentinelMode), dataFilter }],
+        },
+        output: {
+          width: 1024,
+          height: 1024,
+          responses: [{ identifier: "default", format: { type: "image/png" } }],
+        },
+        evalscript: getSentinelEvalscript(sentinelMode),
+      };
+
+      const response = await fetch(SENTINEL_PROCESS_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Sentinel render mislukt (${response.status}): ${text.slice(0, 160)}`);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      clearSentinelOverlay();
+      sentinelOverlayUrlRef.current = objectUrl;
+      const overlay = new google.maps.GroundOverlay(objectUrl, {
+        north: ne.lat(),
+        south: sw.lat(),
+        east: ne.lng(),
+        west: sw.lng(),
+      });
+      overlay.setMap(mapRef.current);
+      sentinelOverlayRef.current = overlay;
+    } catch (error) {
+      setSentinelError(error instanceof Error ? error.message : "Sentinel render mislukt");
+    } finally {
+      setSentinelLoading(false);
+    }
+  }, [clearSentinelOverlay, getSentinelToken, sentinelCloud, sentinelFromDate, sentinelMode, sentinelToDate]);
+
   const queryAhnFeatureInfo = useCallback(async (layer: LayerConfig, latLng: google.maps.LatLng): Promise<AhnInfoResult | null> => {
     if (!layer.ahnWmsBaseUrl) return null;
     const sourceLayerName = ahnResolvedLayerRef.current.get(layer.id);
@@ -555,6 +727,10 @@ export default function Twin() {
     return () => listener.remove();
   }, [activeLayers, queryAhnFeatureInfo]);
 
+  useEffect(() => {
+    return () => clearSentinelOverlay();
+  }, [clearSentinelOverlay]);
+
   const filteredThemes = useMemo(
     () =>
       themes
@@ -627,6 +803,77 @@ export default function Twin() {
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            <div className="border-b border-gray-100">
+              <button
+                onClick={() => setSentinelOpen((prev) => !prev)}
+                className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+              >
+                <span className="text-[#D52B1E]">
+                  <Satellite className="w-4 h-4" />
+                </span>
+                {sentinelOpen ? (
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                )}
+                <span className="font-semibold text-sm text-[#1E293B] flex-1">Sentinel satelliet</span>
+              </button>
+
+              {sentinelOpen && (
+                <div className="px-4 pb-3 space-y-2 bg-gray-50/50">
+                  <select
+                    value={sentinelMode}
+                    onChange={(e) => setSentinelMode(e.target.value as SentinelLayerMode)}
+                    className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white"
+                  >
+                    <option value="S2_TRUE_COLOR">S2 True Color</option>
+                    <option value="S2_NDVI">S2 NDVI</option>
+                    <option value="S5P_NO2">S5P NO2 (luchtkwaliteit)</option>
+                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={sentinelFromDate}
+                      onChange={(e) => setSentinelFromDate(e.target.value)}
+                      className="border border-gray-200 rounded-md px-2 py-1.5 text-xs bg-white"
+                    />
+                    <input
+                      type="date"
+                      value={sentinelToDate}
+                      onChange={(e) => setSentinelToDate(e.target.value)}
+                      className="border border-gray-200 rounded-md px-2 py-1.5 text-xs bg-white"
+                    />
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={sentinelCloud}
+                    onChange={(e) => setSentinelCloud(Number(e.target.value))}
+                    disabled={sentinelMode === "S5P_NO2"}
+                    className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white disabled:bg-gray-100"
+                    placeholder="Max cloud %"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={renderSentinelOverlay}
+                      disabled={sentinelLoading}
+                      className="flex-1 bg-[#D52B1E] hover:bg-[#B91C1C] text-white rounded-md px-2.5 py-2 text-xs font-semibold disabled:opacity-60"
+                    >
+                      {sentinelLoading ? "Laden..." : "Render Sentinel"}
+                    </button>
+                    <button
+                      onClick={clearSentinelOverlay}
+                      className="border border-gray-200 bg-white hover:bg-gray-100 rounded-md px-2.5 py-2 text-xs font-medium"
+                    >
+                      Wissen
+                    </button>
+                  </div>
+                  {sentinelError && <div className="text-[11px] text-red-600">{sentinelError}</div>}
+                </div>
+              )}
+            </div>
+
             {filteredThemes.map((theme) => (
               <div key={theme.id} className="border-b border-gray-100">
                 <button

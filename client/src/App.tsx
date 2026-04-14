@@ -9,7 +9,6 @@ import Home from "./pages/Home";
 import Twin from "./pages/Twin";
 import FAQ from "./pages/FAQ";
 import Contact from "./pages/Contact";
-import Sentinel from "./pages/Sentinel";
 
 function AppRouter() {
   return (
@@ -18,7 +17,6 @@ function AppRouter() {
         <Route path="/" component={Home} />
         <Route path="/twin" component={Twin} />
         <Route path="/twin/:theme" component={Twin} />
-        <Route path="/sentinel" component={Sentinel} />
         <Route path="/veelgestelde-vragen" component={FAQ} />
         <Route path="/contact" component={Contact} />
         <Route path="/404" component={NotFound} />
