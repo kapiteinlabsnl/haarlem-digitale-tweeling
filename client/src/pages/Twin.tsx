@@ -79,8 +79,8 @@ type SentinelLayerMode = "S2_TRUE_COLOR" | "S2_NDVI" | "S5P_NO2";
 
 const SENTINEL_TOKEN_URL = "https://services.sentinel-hub.com/oauth/token";
 const SENTINEL_PROCESS_URL = "https://services.sentinel-hub.com/api/v1/process";
-const SENTINEL_CLIENT_ID_HARDCODED = "ee15a979-c44e-44cc-8014-b95b82f99b79";
-const SENTINEL_CLIENT_SECRET_HARDCODED = "PLAKfb95f935db9b40a68895d8bd07e3afa8";
+const SENTINEL_CLIENT_ID_HARDCODED = "4c1022aa-b65a-4505-b306-bf247896dcc7";
+const SENTINEL_CLIENT_SECRET_HARDCODED = "7DSMaJFLZJSEmPT9UYdGAeXQVg10VrUI";
 const SENTINEL_CLIENT_ID = (
   SENTINEL_CLIENT_ID_HARDCODED || import.meta.env.VITE_SENTINEL_CLIENT_ID || ""
 ).trim();
