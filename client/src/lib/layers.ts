@@ -91,6 +91,15 @@ export const themes: ThemeConfig[] = [
       { id: "gemeente_grenzen", name: "Gemeentegrenzen", source: "haarlem-wfs", wfsLayer: "gemeente_grenzen", color: "#6366F1", visible: false, category: "topografie" },
       { id: "stadsdelen", name: "Stadsdelen", source: "haarlem-wfs", wfsLayer: "stadsdeel", color: "#8B5CF6", visible: false, category: "topografie" },
       { id: "postcode4", name: "Postcode 4 posities", source: "haarlem-wfs", wfsLayer: "postcode4", color: "#A78BFA", visible: false, category: "topografie" },
+    ],
+  },
+  {
+    id: "ahn",
+    name: "AHN hoogte en footage",
+    icon: "map-pin",
+    description: "AHN hoogteproducten en beeldmateriaal als kaartoverlay",
+    color: "#0EA5E9",
+    layers: [
       {
         id: "ahn_dsm",
         name: "AHN Hoogtemodel (DSM 0.5m)",
@@ -101,7 +110,7 @@ export const themes: ThemeConfig[] = [
         ahnTransparent: true,
         color: "#06B6D4",
         visible: false,
-        category: "topografie",
+        category: "ahn",
       },
       {
         id: "ahn_dtm",
@@ -113,7 +122,7 @@ export const themes: ThemeConfig[] = [
         ahnTransparent: true,
         color: "#0EA5E9",
         visible: false,
-        category: "topografie",
+        category: "ahn",
       },
       {
         id: "ahn_footage",
@@ -125,7 +134,7 @@ export const themes: ThemeConfig[] = [
         ahnTransparent: false,
         color: "#2563EB",
         visible: false,
-        category: "topografie",
+        category: "ahn",
       },
     ],
   },
