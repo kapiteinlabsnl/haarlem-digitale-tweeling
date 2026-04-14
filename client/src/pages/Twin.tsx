@@ -66,6 +66,14 @@ interface ParsedWmsCapabilities {
   layerNames: string[];
 }
 
+interface AhnInfoResult {
+  layerId: string;
+  layerName: string;
+  sourceLayerName: string;
+  value: string;
+  raw: string;
+}
+
 function parseWmsCapabilities(xmlText: string): ParsedWmsCapabilities {
   const parser = new DOMParser();
   const xml = parser.parseFromString(xmlText, "text/xml");
@@ -92,6 +100,13 @@ function pickAhnLayerName(layer: LayerConfig, candidates: string[]): string | nu
   }
 
   return candidates[0] || null;
+}
+
+function extractAhnValue(rawText: string): string {
+  const text = rawText.replace(/\s+/g, " ").trim();
+  const numberMatch = text.match(/-?\d+([.,]\d+)?/);
+  if (numberMatch) return numberMatch[0].replace(",", ".");
+  return text.slice(0, 180) || "Geen waarde gevonden";
 }
 
 interface FeatureInfoProps {
@@ -160,6 +175,7 @@ export default function Twin() {
   const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement[]>>(new Map());
   const ahnTileLayersRef = useRef<Map<string, google.maps.ImageMapType>>(new Map());
   const ahnCapabilitiesRef = useRef<Map<string, ParsedWmsCapabilities>>(new Map());
+  const ahnResolvedLayerRef = useRef<Map<string, string>>(new Map());
   const [mapReady, setMapReady] = useState(false);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -170,6 +186,7 @@ export default function Twin() {
   const [loadingLayers, setLoadingLayers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFeature, setSelectedFeature] = useState<google.maps.Data.Feature | null>(null);
+  const [selectedAhnInfo, setSelectedAhnInfo] = useState<AhnInfoResult | null>(null);
   const [addressSearch, setAddressSearch] = useState("");
 
   const toggleTheme = useCallback((themeId: string) => {
@@ -200,6 +217,7 @@ export default function Twin() {
       }
       ahnTileLayersRef.current.delete(layerId);
     }
+    ahnResolvedLayerRef.current.delete(layerId);
   }, []);
 
   const resolveAhnLayerName = useCallback(async (layer: LayerConfig): Promise<string | null> => {
@@ -220,6 +238,7 @@ export default function Twin() {
     if (!mapRef.current || !layer.ahnWmsBaseUrl) return;
     const resolvedLayerName = await resolveAhnLayerName(layer);
     if (!resolvedLayerName) return;
+    ahnResolvedLayerRef.current.set(layer.id, resolvedLayerName);
 
     const tileLayer = new google.maps.ImageMapType({
       tileSize: new google.maps.Size(256, 256),
@@ -369,6 +388,53 @@ export default function Twin() {
     [addressSearch]
   );
 
+  const queryAhnFeatureInfo = useCallback(async (layer: LayerConfig, latLng: google.maps.LatLng): Promise<AhnInfoResult | null> => {
+    if (!layer.ahnWmsBaseUrl) return null;
+    const sourceLayerName = ahnResolvedLayerRef.current.get(layer.id);
+    if (!sourceLayerName) return null;
+
+    const lat = latLng.lat();
+    const lng = latLng.lng();
+    const delta = 0.0005;
+    const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
+    const width = 256;
+    const height = 256;
+    const i = Math.floor(width / 2);
+    const j = Math.floor(height / 2);
+
+    const params = new URLSearchParams({
+      SERVICE: "WMS",
+      VERSION: "1.3.0",
+      REQUEST: "GetFeatureInfo",
+      CRS: "EPSG:4326",
+      BBOX: bbox,
+      WIDTH: String(width),
+      HEIGHT: String(height),
+      LAYERS: sourceLayerName,
+      QUERY_LAYERS: sourceLayerName,
+      INFO_FORMAT: "text/plain",
+      I: String(i),
+      J: String(j),
+      FEATURE_COUNT: "1",
+    });
+
+    try {
+      const response = await fetch(`${layer.ahnWmsBaseUrl}?${params.toString()}`);
+      if (!response.ok) return null;
+      const raw = await response.text();
+      const value = extractAhnValue(raw);
+      return {
+        layerId: layer.id,
+        layerName: layer.name,
+        sourceLayerName,
+        value,
+        raw,
+      };
+    } catch {
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     if (params.theme && mapReady) {
       const theme = themes.find((t) => t.id === params.theme);
@@ -378,6 +444,34 @@ export default function Twin() {
       }
     }
   }, [params.theme, mapReady, activeLayers, toggleLayer]);
+
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const map = mapRef.current;
+
+    const listener = map.addListener("click", async (event: google.maps.MapMouseEvent) => {
+      const latLng = event.latLng;
+      if (!latLng) return;
+
+      const activeAhnLayers = themes
+        .flatMap((theme) => theme.layers)
+        .filter((layer) => activeLayers.has(layer.id) && layer.source === "ahn-wms");
+      if (activeAhnLayers.length === 0) {
+        setSelectedAhnInfo(null);
+        return;
+      }
+
+      for (const layer of activeAhnLayers) {
+        const info = await queryAhnFeatureInfo(layer, latLng);
+        if (info) {
+          setSelectedAhnInfo(info);
+          return;
+        }
+      }
+    });
+
+    return () => listener.remove();
+  }, [activeLayers, queryAhnFeatureInfo]);
 
   const filteredThemes = useMemo(
     () =>
@@ -406,6 +500,17 @@ export default function Twin() {
     }
     return result;
   }, [activeLayers]);
+
+  const activeAhnDebug = useMemo(() => {
+    return themes
+      .flatMap((theme) => theme.layers)
+      .filter((layer) => activeLayers.has(layer.id) && layer.source === "ahn-wms")
+      .map((layer) => ({
+        layerId: layer.id,
+        layerName: layer.name,
+        sourceLayer: ahnResolvedLayerRef.current.get(layer.id) || "resolving...",
+      }));
+  }, [activeLayers, loadingLayers]);
 
   return (
     <div className="h-screen flex flex-col">
@@ -498,6 +603,16 @@ export default function Twin() {
           </div>
 
           <div className="p-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 shrink-0">
+            {activeAhnDebug.length > 0 && (
+              <div className="mb-2 space-y-1">
+                <div className="font-semibold text-gray-700">AHN actieve bronlagen</div>
+                {activeAhnDebug.map((item) => (
+                  <div key={item.layerId}>
+                    {item.layerName}: {item.sourceLayer}
+                  </div>
+                ))}
+              </div>
+            )}
             Data:{" "}
             <a href="https://data.haarlem.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
               data.haarlem.nl
@@ -560,6 +675,15 @@ export default function Twin() {
           />
 
           <FeatureInfoPanel feature={selectedFeature} onClose={() => setSelectedFeature(null)} />
+
+          {selectedAhnInfo && (
+            <div className="absolute bottom-4 left-4 z-20 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-4 py-3 max-w-sm">
+              <div className="text-xs font-bold text-[#1E293B] mb-1">AHN meetwaarde</div>
+              <div className="text-xs text-[#334155]">{selectedAhnInfo.layerName}</div>
+              <div className="text-sm font-semibold text-[#0F172A] mt-1">{selectedAhnInfo.value}</div>
+              <div className="text-[11px] text-gray-500 mt-1">Bronlaag: {selectedAhnInfo.sourceLayerName}</div>
+            </div>
+          )}
 
           {activeLayerInfo.length > 0 && (
             <div className="absolute bottom-4 right-4 z-20 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-4 py-3 max-w-[220px]">
