@@ -118,8 +118,11 @@ function evaluatePixel(sample) {
 }`;
 }
 
-function getSentinelCollection(mode: SentinelLayerMode): string {
-  return mode === "S5P_NO2" ? "sentinel-5p-l2" : "sentinel-2-l2a";
+function getSentinelCollections(mode: SentinelLayerMode): string[] {
+  if (mode === "S5P_NO2") {
+    return ["sentinel-5p-l2", "sentinel-5p-l2-offl", "sentinel-5p-l2-nrti"];
+  }
+  return ["sentinel-2-l2a"];
 }
 
 function parseWmsCapabilities(xmlText: string): ParsedWmsCapabilities {
@@ -533,32 +536,50 @@ export default function Twin() {
         dataFilter.maxCloudCoverage = sentinelCloud;
       }
 
-      const payload = {
-        input: {
-          bounds: { bbox: [sw.lng(), sw.lat(), ne.lng(), ne.lat()] },
-          data: [{ type: getSentinelCollection(sentinelMode), dataFilter }],
-        },
-        output: {
-          width: 1024,
-          height: 1024,
-          responses: [{ identifier: "default", format: { type: "image/png" } }],
-        },
-        evalscript: getSentinelEvalscript(sentinelMode),
-      };
+      const collectionCandidates = getSentinelCollections(sentinelMode);
+      let blob: Blob | null = null;
+      let lastError = "";
 
-      const response = await fetch(`${SENTINEL_PROXY_BASE_URL}/process`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
+      for (const collectionType of collectionCandidates) {
+        const payload = {
+          input: {
+            bounds: { bbox: [sw.lng(), sw.lat(), ne.lng(), ne.lat()] },
+            data: [{ type: collectionType, dataFilter }],
+          },
+          output: {
+            width: 1024,
+            height: 1024,
+            responses: [{ identifier: "default", format: { type: "image/png" } }],
+          },
+          evalscript: getSentinelEvalscript(sentinelMode),
+        };
+
+        const response = await fetch(`${SENTINEL_PROXY_BASE_URL}/process`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (response.ok) {
+          blob = await response.blob();
+          break;
+        }
+
         const text = await response.text();
-        throw new Error(`Sentinel render mislukt (${response.status}): ${text.slice(0, 160)}`);
+        lastError = text;
+
+        // For non-collection errors, stop immediately.
+        if (!(response.status === 400 && text.toLowerCase().includes("collection"))) {
+          throw new Error(`Sentinel render mislukt (${response.status}): ${text.slice(0, 220)}`);
+        }
       }
 
-      const blob = await response.blob();
+      if (!blob) {
+        throw new Error(`Sentinel render mislukt (400): ${lastError.slice(0, 220)}`);
+      }
+
       const objectUrl = URL.createObjectURL(blob);
       clearSentinelOverlay();
       sentinelOverlayUrlRef.current = objectUrl;
@@ -804,16 +825,26 @@ export default function Twin() {
                       className="border border-gray-200 rounded-md px-2 py-1.5 text-xs bg-white"
                     />
                   </div>
-                  <input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={sentinelCloud}
-                    onChange={(e) => setSentinelCloud(Number(e.target.value))}
-                    disabled={sentinelMode === "S5P_NO2"}
-                    className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white disabled:bg-gray-100"
-                    placeholder="Max cloud %"
-                  />
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-gray-600">
+                      Maximale bewolkingsgraad (%)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={sentinelCloud}
+                      onChange={(e) => setSentinelCloud(Number(e.target.value))}
+                      disabled={sentinelMode === "S5P_NO2"}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white disabled:bg-gray-100"
+                      placeholder="Bijv. 20"
+                    />
+                    {sentinelMode !== "S5P_NO2" && (
+                      <p className="text-[11px] text-gray-500">
+                        Lager percentage = minder wolken, maar minder beschikbare beelden.
+                      </p>
+                    )}
+                  </div>
                   <div className="flex gap-2">
                     <button
                       onClick={renderSentinelOverlay}
