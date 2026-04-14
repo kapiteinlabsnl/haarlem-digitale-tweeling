@@ -5,6 +5,10 @@ export interface LayerConfig {
   wfsLayer?: string;
   pdokCollectionUrl?: string;
   pdokIdField?: string;
+  pdokTilesUrl?: string;
+  pdokApiRoot?: string;
+  pdokCollectionId?: string;
+  pdokDescription?: string;
   icon?: string;
   color: string;
   visible: boolean;
@@ -93,7 +97,10 @@ export const themes: ThemeConfig[] = [
         id: "pdok_bag_panden",
         name: "PDOK BAG panden",
         source: "pdok-ogc-features",
+        pdokApiRoot: "https://api.pdok.nl/kadaster/bag/ogc/v2",
+        pdokCollectionId: "pand",
         pdokCollectionUrl: "https://api.pdok.nl/kadaster/bag/ogc/v2/collections/pand/items",
+        pdokTilesUrl: "https://api.pdok.nl/kadaster/bag/ogc/v2/collections/pand/tiles",
         pdokIdField: "identificatie",
         color: "#0EA5E9",
         visible: false,
@@ -103,7 +110,10 @@ export const themes: ThemeConfig[] = [
         id: "pdok_bestuurlijke_gebieden",
         name: "PDOK bestuurlijke gebieden",
         source: "pdok-ogc-features",
+        pdokApiRoot: "https://api.pdok.nl/kadaster/brk-administratieve-eenheden/ogc/v1",
+        pdokCollectionId: "administratieveeenheden",
         pdokCollectionUrl: "https://api.pdok.nl/kadaster/brk-administratieve-eenheden/ogc/v1/collections/administratieveeenheden/items",
+        pdokTilesUrl: "https://api.pdok.nl/kadaster/brk-administratieve-eenheden/ogc/v1/collections/administratieveeenheden/tiles",
         pdokIdField: "inspireid_localid",
         color: "#4F46E5",
         visible: false,

@@ -7,7 +7,7 @@ import { Header } from "@/components/Header";
 import { MapView } from "@/components/Map";
 import { themes, HAARLEM_CENTER, DEFAULT_ZOOM, buildWfsUrl } from "@/lib/layers";
 import type { LayerConfig } from "@/lib/layers";
-import { fetchPdokFeatures, getMapBbox, loadPdokCatalog } from "@/lib/pdok";
+import { fetchPdokFeatures, fetchPdokTileSource, getMapBbox, loadPdokCatalog } from "@/lib/pdok";
 import type { PdokFeature, PdokGeometry } from "@/lib/pdok";
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { useParams } from "wouter";
@@ -29,6 +29,9 @@ import {
   X,
   Layers,
   Download,
+  RefreshCw,
+  ExternalLink,
+  SlidersHorizontal,
 } from "lucide-react";
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -96,6 +99,12 @@ interface FeatureInfoProps {
   onClose: () => void;
 }
 
+type LayerRenderMode = "tiles" | "features" | "loading" | "error" | "inactive";
+interface LayerRenderStatus {
+  mode: LayerRenderMode;
+  detail?: string;
+}
+
 function FeatureInfoPanel({ feature, onClose }: FeatureInfoProps) {
   if (!feature) return null;
 
@@ -155,6 +164,7 @@ export default function Twin() {
   const mapRef = useRef<google.maps.Map | null>(null);
   const dataLayersRef = useRef<Map<string, google.maps.Data>>(new Map());
   const markersRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement[]>>(new Map());
+  const tileLayersRef = useRef<Map<string, google.maps.ImageMapType>>(new Map());
   const rawFeaturesRef = useRef<Map<string, PdokFeature[]>>(new Map());
   const visibleFeaturesRef = useRef<Map<string, PdokFeature[]>>(new Map());
   const [mapReady, setMapReady] = useState(false);
@@ -168,8 +178,12 @@ export default function Twin() {
   const [loadingLayers, setLoadingLayers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [pdokFilter, setPdokFilter] = useState("");
+  const [pdokUseViewportBbox, setPdokUseViewportBbox] = useState(true);
   const [pdokCatalogLoading, setPdokCatalogLoading] = useState(false);
   const [pdokCatalogLayers, setPdokCatalogLayers] = useState<LayerConfig[]>([]);
+  const [layerRenderStatus, setLayerRenderStatus] = useState<Record<string, LayerRenderStatus>>({});
+  const [vectorFillOpacity, setVectorFillOpacity] = useState(0.25);
+  const [vectorStrokeWeight, setVectorStrokeWeight] = useState(2);
   const [selectedFeature, setSelectedFeature] = useState<google.maps.Data.Feature | null>(null);
   const [addressSearch, setAddressSearch] = useState("");
 
@@ -198,15 +212,27 @@ export default function Twin() {
       const catalog = await loadPdokCatalog();
       const colorPalette = ["#0EA5E9", "#4F46E5", "#10B981", "#F59E0B", "#EC4899", "#6366F1"];
       const layers: LayerConfig[] = catalog.map((entry, index) => {
+        const normalizedItems = entry.itemsUrl.replace(/\/+$/, "");
+        const collectionSegment = normalizedItems.match(/\/collections\/([^/]+)\/items$/)?.[1];
+        const apiRoot = collectionSegment
+          ? normalizedItems.replace(new RegExp(`/collections/${collectionSegment}/items$`), "")
+          : undefined;
         const safeId = `${entry.apiTitle}-${entry.id}`
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/(^-|-$)/g, "");
         return {
           id: `pdok_auto_${safeId}`,
-          name: `${entry.title} (${entry.apiTitle})`,
+          name: entry.title,
           source: "pdok-ogc-features",
+          pdokApiRoot: apiRoot,
+          pdokCollectionId: collectionSegment || entry.id,
+          pdokDescription: entry.description,
           pdokCollectionUrl: entry.itemsUrl,
+          pdokTilesUrl:
+            apiRoot && (collectionSegment || entry.id)
+              ? `${apiRoot}/collections/${collectionSegment || entry.id}/tiles`
+              : undefined,
           pdokIdField: "id",
           color: colorPalette[index % colorPalette.length],
           visible: false,
@@ -244,7 +270,18 @@ export default function Twin() {
       markers.forEach((m) => (m.map = null));
       markersRef.current.delete(layerId);
     }
+    const tileLayer = tileLayersRef.current.get(layerId);
+    if (tileLayer && mapRef.current) {
+      const overlays = mapRef.current.overlayMapTypes;
+      for (let i = overlays.getLength() - 1; i >= 0; i--) {
+        if (overlays.getAt(i) === tileLayer) {
+          overlays.removeAt(i);
+        }
+      }
+      tileLayersRef.current.delete(layerId);
+    }
     visibleFeaturesRef.current.delete(layerId);
+    setLayerRenderStatus((prev) => ({ ...prev, [layerId]: { mode: "inactive" } }));
   }, []);
 
   const renderLayerFeatures = useCallback((layer: LayerConfig, features: PdokFeature[]) => {
@@ -301,9 +338,9 @@ export default function Twin() {
 
       dataLayer.setStyle({
         fillColor: `rgb(${r},${g},${b})`,
-        fillOpacity: 0.25,
+        fillOpacity: vectorFillOpacity,
         strokeColor: `rgb(${r},${g},${b})`,
-        strokeWeight: 2,
+        strokeWeight: vectorStrokeWeight,
         strokeOpacity: 0.8,
       });
 
@@ -318,11 +355,36 @@ export default function Twin() {
 
       dataLayersRef.current.set(layer.id, dataLayer);
     }
+    setLayerRenderStatus((prev) => ({ ...prev, [layer.id]: { mode: "features" } }));
+  }, [vectorFillOpacity, vectorStrokeWeight]);
+
+  const tryRenderPdokTiles = useCallback(async (layer: LayerConfig): Promise<boolean> => {
+    if (!mapRef.current || !layer.pdokTilesUrl) return false;
+    const tileSource = await fetchPdokTileSource(layer.pdokTilesUrl);
+    if (!tileSource) return false;
+
+    const tileLayer = new google.maps.ImageMapType({
+      tileSize: new google.maps.Size(tileSource.tileSize, tileSource.tileSize),
+      name: layer.name,
+      minZoom: tileSource.minZoom,
+      maxZoom: tileSource.maxZoom,
+      getTileUrl: (coord, zoom) =>
+        tileSource.templateUrl
+          .replace(/\{z\}/g, String(zoom))
+          .replace(/\{x\}/g, String(coord.x))
+          .replace(/\{y\}/g, String(coord.y)),
+    });
+
+    mapRef.current.overlayMapTypes.push(tileLayer);
+    tileLayersRef.current.set(layer.id, tileLayer);
+    setLayerRenderStatus((prev) => ({ ...prev, [layer.id]: { mode: "tiles" } }));
+    return true;
   }, []);
 
   const addLayerToMap = useCallback(async (layer: LayerConfig) => {
     if (!mapRef.current) return;
 
+    setLayerRenderStatus((prev) => ({ ...prev, [layer.id]: { mode: "loading" } }));
     setLoadingLayers((prev) => new Set(prev).add(layer.id));
 
     try {
@@ -336,8 +398,11 @@ export default function Twin() {
         const geojson = await response.json();
         features = (geojson.features || []) as PdokFeature[];
       } else {
+        const renderedTiles = await tryRenderPdokTiles(layer);
+        if (renderedTiles) return;
+
         if (!layer.pdokCollectionUrl) throw new Error(`Missing pdokCollectionUrl for ${layer.id}`);
-        const bbox = getMapBbox(mapRef.current);
+        const bbox = pdokUseViewportBbox ? getMapBbox(mapRef.current) : null;
         const pdok = await fetchPdokFeatures(layer.pdokCollectionUrl, {
           limit: 800,
           bbox: bbox ?? undefined,
@@ -355,6 +420,13 @@ export default function Twin() {
       }
     } catch (err) {
       console.error(`Failed to load layer ${layer.id}:`, err);
+      setLayerRenderStatus((prev) => ({
+        ...prev,
+        [layer.id]: {
+          mode: "error",
+          detail: err instanceof Error ? err.message : "Onbekende fout",
+        },
+      }));
     } finally {
       setLoadingLayers((prev) => {
         const next = new Set(prev);
@@ -362,7 +434,36 @@ export default function Twin() {
         return next;
       });
     }
-  }, [pdokFilter, renderLayerFeatures]);
+  }, [pdokFilter, pdokUseViewportBbox, renderLayerFeatures, tryRenderPdokTiles]);
+
+  const activeRenderStatuses = useMemo(() => {
+    return Array.from(activeLayers)
+      .map((layerId) => {
+        const layer = layerById.get(layerId);
+        if (!layer) return null;
+        return {
+          id: layerId,
+          name: layer.name,
+          status: layerRenderStatus[layerId] || { mode: "inactive" as LayerRenderMode },
+        };
+      })
+      .filter((item): item is { id: string; name: string; status: LayerRenderStatus } => Boolean(item));
+  }, [activeLayers, layerById, layerRenderStatus]);
+
+  useEffect(() => {
+    for (const [layerId, dataLayer] of Array.from(dataLayersRef.current.entries())) {
+      const layer = layerById.get(layerId);
+      if (!layer) continue;
+      const { r, g, b } = hexToRgb(layer.color);
+      dataLayer.setStyle({
+        fillColor: `rgb(${r},${g},${b})`,
+        fillOpacity: vectorFillOpacity,
+        strokeColor: `rgb(${r},${g},${b})`,
+        strokeWeight: vectorStrokeWeight,
+        strokeOpacity: 0.8,
+      });
+    }
+  }, [layerById, vectorFillOpacity, vectorStrokeWeight]);
 
   const toggleLayer = useCallback(
     (layer: LayerConfig) => {
@@ -513,6 +614,36 @@ export default function Twin() {
     URL.revokeObjectURL(objectUrl);
   }, [activeLayers, layerById]);
 
+  const refreshActivePdokLayers = useCallback(async () => {
+    const activePdokLayers = Array.from(activeLayers)
+      .map((id) => layerById.get(id))
+      .filter((layer): layer is LayerConfig => Boolean(layer && layer.source === "pdok-ogc-features"));
+
+    for (const layer of activePdokLayers) {
+      clearLayer(layer.id);
+      await addLayerToMap(layer);
+    }
+  }, [activeLayers, addLayerToMap, clearLayer, layerById]);
+
+  const activePdokLinks = useMemo(() => {
+    return Array.from(activeLayers)
+      .map((id) => layerById.get(id))
+      .filter((layer): layer is LayerConfig => Boolean(layer && layer.source === "pdok-ogc-features"))
+      .map((layer) => {
+        const root = layer.pdokApiRoot?.replace(/\/+$/, "");
+        const collectionId = layer.pdokCollectionId;
+        const links = {
+          items: layer.pdokCollectionUrl || "",
+          collection: root && collectionId ? `${root}/collections/${collectionId}` : "",
+          tiles: root && collectionId ? `${root}/collections/${collectionId}/tiles` : "",
+          styles: root && collectionId ? `${root}/collections/${collectionId}/styles` : "",
+          api: root ? `${root}/api` : "",
+          conformance: root ? `${root}/conformance` : "",
+        };
+        return { layer, links };
+      });
+  }, [activeLayers, layerById]);
+
   return (
     <div className="h-screen flex flex-col">
       <Header />
@@ -546,6 +677,36 @@ export default function Twin() {
               />
             </div>
             <div className="mt-3 space-y-2">
+              <div className="rounded-md border border-gray-200 bg-white p-2 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                  <SlidersHorizontal className="w-3 h-3" />
+                  Vector stijl
+                </div>
+                <label className="block text-xs text-gray-600">
+                  Vlak transparantie: {vectorFillOpacity.toFixed(2)}
+                  <input
+                    className="w-full"
+                    type="range"
+                    min="0.05"
+                    max="0.9"
+                    step="0.05"
+                    value={vectorFillOpacity}
+                    onChange={(e) => setVectorFillOpacity(Number(e.target.value))}
+                  />
+                </label>
+                <label className="block text-xs text-gray-600">
+                  Lijnbreedte: {vectorStrokeWeight}
+                  <input
+                    className="w-full"
+                    type="range"
+                    min="1"
+                    max="6"
+                    step="1"
+                    value={vectorStrokeWeight}
+                    onChange={(e) => setVectorStrokeWeight(Number(e.target.value))}
+                  />
+                </label>
+              </div>
               <button
                 type="button"
                 onClick={loadBulkPdokCatalogLayers}
@@ -554,6 +715,15 @@ export default function Twin() {
               >
                 {pdokCatalogLoading ? "PDOK catalogus laden..." : `Laad volledige PDOK catalogus (${pdokCatalogLayers.length})`}
               </button>
+              <div className="flex items-center gap-2 text-xs text-gray-600">
+                <input
+                  id="pdok-bbox-toggle"
+                  type="checkbox"
+                  checked={pdokUseViewportBbox}
+                  onChange={(e) => setPdokUseViewportBbox(e.target.checked)}
+                />
+                <label htmlFor="pdok-bbox-toggle">Gebruik viewport bbox voor PDOK requests</label>
+              </div>
               <input
                 type="text"
                 placeholder="Filter actieve PDOK eigenschappen..."
@@ -561,6 +731,14 @@ export default function Twin() {
                 onChange={(e) => setPdokFilter(e.target.value)}
                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D52B1E]/30 focus:border-[#D52B1E] transition-colors"
               />
+              <button
+                type="button"
+                onClick={refreshActivePdokLayers}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Herlaad actieve PDOK lagen
+              </button>
               <button
                 type="button"
                 onClick={exportActivePdokAsGeoJson}
@@ -643,6 +821,54 @@ export default function Twin() {
                 {activePdokStats.map((item) => (
                   <div key={item.id}>
                     {item.name}: {item.inViewport}/{item.visible}
+                  </div>
+                ))}
+              </div>
+            )}
+            {activeRenderStatuses.length > 0 && (
+              <div className="space-y-1">
+                <div className="font-semibold text-gray-700">Renderstatus</div>
+                {activeRenderStatuses.map((item) => (
+                  <div key={item.id}>
+                    {item.name}: {item.status.mode}
+                    {item.status.detail ? ` (${item.status.detail})` : ""}
+                  </div>
+                ))}
+              </div>
+            )}
+            {activePdokLinks.length > 0 && (
+              <div className="space-y-1">
+                <div className="font-semibold text-gray-700">PDOK service-links</div>
+                {activePdokLinks.slice(0, 5).map(({ layer, links }) => (
+                  <div key={layer.id} className="space-y-1">
+                    <div className="text-gray-700">{layer.name}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {links.collection && (
+                        <a href={links.collection} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                          Collection <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      {links.items && (
+                        <a href={links.items} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                          Items <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      {links.tiles && (
+                        <a href={links.tiles} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                          Tiles <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      {links.styles && (
+                        <a href={links.styles} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                          Styles <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                      {links.api && (
+                        <a href={links.api} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                          OpenAPI <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

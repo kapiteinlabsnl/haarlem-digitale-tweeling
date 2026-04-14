@@ -27,6 +27,13 @@ export interface PdokCatalogCollection {
   itemsUrl: string;
 }
 
+export interface PdokTileSource {
+  templateUrl: string;
+  minZoom: number;
+  maxZoom: number;
+  tileSize: number;
+}
+
 export const PDOK_API_ROOTS: string[] = [
   "https://api.pdok.nl/kadaster/bag/ogc/v2",
   "https://api.pdok.nl/kadaster/brk-administratieve-eenheden/ogc/v1",
@@ -159,6 +166,63 @@ export async function loadPdokCatalog(apiRoots = PDOK_API_ROOTS): Promise<PdokCa
     seen.add(key);
     return true;
   });
+}
+
+export async function fetchPdokTileSource(tilesUrl: string): Promise<PdokTileSource | null> {
+  const normalized = tilesUrl.replace(/\/+$/, "");
+  try {
+    const response = await fetch(`${normalized}?f=json`);
+    if (!response.ok) return null;
+    const json = await response.json();
+
+    const links = extractTileLinks(json);
+    const template = links.find((href) => /\{tile(matrix|row|col)\}/i.test(href)) || links[0];
+    if (!template) return null;
+
+    const absTemplate = toAbsoluteUrl(normalized, template)
+      .replace(/\{tilematrix\}/gi, "{z}")
+      .replace(/\{tilerow\}/gi, "{y}")
+      .replace(/\{tilecol\}/gi, "{x}");
+
+    return {
+      templateUrl: absTemplate,
+      minZoom: 0,
+      maxZoom: 22,
+      tileSize: 256,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function extractTileLinks(payload: any): string[] {
+  const candidates: string[] = [];
+  const inspectLinks = (links: any[] | undefined) => {
+    if (!Array.isArray(links)) return;
+    for (const link of links) {
+      const href = typeof link?.href === "string" ? link.href : "";
+      const rel = typeof link?.rel === "string" ? link.rel : "";
+      const type = typeof link?.type === "string" ? link.type : "";
+      if (!href) continue;
+      if (rel === "item" || rel.includes("tiles") || type.startsWith("image/") || type.includes("mapbox")) {
+        candidates.push(href);
+      }
+    }
+  };
+
+  inspectLinks(payload?.links);
+  if (Array.isArray(payload?.tilesets)) {
+    for (const tileset of payload.tilesets) inspectLinks(tileset?.links);
+  }
+  return Array.from(new Set(candidates));
+}
+
+function toAbsoluteUrl(base: string, href: string): string {
+  try {
+    return new URL(href, `${base}/`).toString();
+  } catch {
+    return href;
+  }
 }
 
 async function discoverPdokApiRootsFromLanding(): Promise<string[]> {
