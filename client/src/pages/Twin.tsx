@@ -404,17 +404,17 @@ export default function Twin() {
 
     const params = new URLSearchParams({
       SERVICE: "WMS",
-      VERSION: "1.3.0",
+      VERSION: "1.1.1",
       REQUEST: "GetFeatureInfo",
-      CRS: "EPSG:4326",
+      SRS: "EPSG:4326",
       BBOX: bbox,
       WIDTH: String(width),
       HEIGHT: String(height),
       LAYERS: sourceLayerName,
       QUERY_LAYERS: sourceLayerName,
       INFO_FORMAT: "text/plain",
-      I: String(i),
-      J: String(j),
+      X: String(i),
+      Y: String(j),
       FEATURE_COUNT: "1",
     });
 
