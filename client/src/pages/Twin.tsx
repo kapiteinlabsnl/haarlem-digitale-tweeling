@@ -7,7 +7,7 @@ import { Header } from "@/components/Header";
 import { MapView } from "@/components/Map";
 import { themes, HAARLEM_CENTER, DEFAULT_ZOOM, buildWfsUrl } from "@/lib/layers";
 import type { LayerConfig } from "@/lib/layers";
-import { fetchPdokFeatures, getMapBbox } from "@/lib/pdok";
+import { fetchPdokFeatures, getMapBbox, loadPdokCatalog } from "@/lib/pdok";
 import type { PdokFeature, PdokGeometry } from "@/lib/pdok";
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import { useParams } from "wouter";
@@ -168,13 +168,61 @@ export default function Twin() {
   const [loadingLayers, setLoadingLayers] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [pdokFilter, setPdokFilter] = useState("");
+  const [pdokCatalogLoading, setPdokCatalogLoading] = useState(false);
+  const [pdokCatalogLayers, setPdokCatalogLayers] = useState<LayerConfig[]>([]);
   const [selectedFeature, setSelectedFeature] = useState<google.maps.Data.Feature | null>(null);
   const [addressSearch, setAddressSearch] = useState("");
 
+  const allThemes = useMemo(() => {
+    if (pdokCatalogLayers.length === 0) return themes;
+    return [
+      ...themes,
+      {
+        id: "pdok_catalogus",
+        name: "PDOK Catalogus",
+        icon: "map-pin",
+        description: "Automatisch ingeladen PDOK OGC collections",
+        color: "#0EA5E9",
+        layers: pdokCatalogLayers,
+      },
+    ];
+  }, [pdokCatalogLayers]);
+
   const layerById = useMemo(
-    () => new Map(themes.flatMap((theme) => theme.layers.map((layer) => [layer.id, layer] as const))),
-    []
+    () => new Map(allThemes.flatMap((theme) => theme.layers.map((layer) => [layer.id, layer] as const))),
+    [allThemes]
   );
+  const loadBulkPdokCatalogLayers = useCallback(async () => {
+    setPdokCatalogLoading(true);
+    try {
+      const catalog = await loadPdokCatalog();
+      const colorPalette = ["#0EA5E9", "#4F46E5", "#10B981", "#F59E0B", "#EC4899", "#6366F1"];
+      const layers: LayerConfig[] = catalog.map((entry, index) => {
+        const safeId = `${entry.apiTitle}-${entry.id}`
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/(^-|-$)/g, "");
+        return {
+          id: `pdok_auto_${safeId}`,
+          name: `${entry.title} (${entry.apiTitle})`,
+          source: "pdok-ogc-features",
+          pdokCollectionUrl: entry.itemsUrl,
+          pdokIdField: "id",
+          color: colorPalette[index % colorPalette.length],
+          visible: false,
+          category: "pdok-catalog",
+        };
+      });
+      setPdokCatalogLayers(layers);
+      setExpandedThemes((prev) => new Set([...Array.from(prev), "pdok_catalogus"]));
+    } catch (error) {
+      console.error("Failed to load PDOK catalog", error);
+      window.alert("PDOK catalogus laden is mislukt.");
+    } finally {
+      setPdokCatalogLoading(false);
+    }
+  }, []);
+
 
   const toggleTheme = useCallback((themeId: string) => {
     setExpandedThemes((prev) => {
@@ -387,7 +435,7 @@ export default function Twin() {
   // Filter themes/layers by search
   const filteredThemes = useMemo(
     () =>
-      themes
+      allThemes
         .map((theme) => ({
           ...theme,
           layers: theme.layers.filter(
@@ -398,13 +446,13 @@ export default function Twin() {
           ),
         }))
         .filter((theme) => theme.layers.length > 0 || !searchQuery),
-    [searchQuery]
+    [allThemes, searchQuery]
   );
 
   // Get active layer info for legend
   const activeLayerInfo = useMemo(() => {
     const result: { name: string; color: string }[] = [];
-    for (const theme of themes) {
+    for (const theme of allThemes) {
       for (const layer of theme.layers) {
         if (activeLayers.has(layer.id)) {
           result.push({ name: layer.name, color: layer.color });
@@ -412,7 +460,7 @@ export default function Twin() {
       }
     }
     return result;
-  }, [activeLayers]);
+  }, [activeLayers, allThemes]);
 
   const activePdokStats = useMemo(() => {
     const stats: { id: string; name: string; visible: number; inViewport: number }[] = [];
@@ -498,6 +546,14 @@ export default function Twin() {
               />
             </div>
             <div className="mt-3 space-y-2">
+              <button
+                type="button"
+                onClick={loadBulkPdokCatalogLayers}
+                disabled={pdokCatalogLoading}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors disabled:opacity-50"
+              >
+                {pdokCatalogLoading ? "PDOK catalogus laden..." : `Laad volledige PDOK catalogus (${pdokCatalogLayers.length})`}
+              </button>
               <input
                 type="text"
                 placeholder="Filter actieve PDOK eigenschappen..."

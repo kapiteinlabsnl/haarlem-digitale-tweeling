@@ -19,6 +19,29 @@ export interface PdokFeatureCollection {
   features: PdokFeature[];
 }
 
+export interface PdokCatalogCollection {
+  apiTitle: string;
+  id: string;
+  title: string;
+  description: string;
+  itemsUrl: string;
+}
+
+export const PDOK_API_ROOTS: string[] = [
+  "https://api.pdok.nl/kadaster/bag/ogc/v2",
+  "https://api.pdok.nl/kadaster/brk-administratieve-eenheden/ogc/v1",
+  "https://api.pdok.nl/kadaster/brt-achtergrondkaart/ogc/v1",
+  "https://api.pdok.nl/brt/top10nl/ogc/v1",
+  "https://api.pdok.nl/kadaster/3d-basisvoorziening/ogc/v1",
+  "https://api.pdok.nl/kadaster/3d-geluid/ogc/v1",
+  "https://api.pdok.nl/kadaster/bag-terugmeldingen/ogc/v1",
+  "https://api.pdok.nl/kadaster/bgt-terugmeldingen/ogc/v1",
+  "https://api.pdok.nl/kadaster/brt-terugmeldingen/ogc/v1",
+  "https://api.pdok.nl/rvo/gewaspercelen/ogc/v1",
+];
+
+const PDOK_LANDING_PAGE = "https://api.pdok.nl/";
+
 function to4326Bbox(bounds: google.maps.LatLngBounds): [number, number, number, number] {
   const southWest = bounds.getSouthWest();
   const northEast = bounds.getNorthEast();
@@ -73,5 +96,81 @@ function normalizeFeature(feature: {
     properties: feature.properties ?? {},
     id: feature.id,
   };
+}
+
+function normalizeApiRoot(apiRoot: string): string {
+  return apiRoot.replace(/\/+$/, "");
+}
+
+export async function fetchPdokCollections(apiRoot: string): Promise<PdokCatalogCollection[]> {
+  const normalized = normalizeApiRoot(apiRoot);
+  const response = await fetch(`${normalized}/collections?f=json`);
+  if (!response.ok) {
+    throw new Error(`PDOK collections request failed (${response.status})`);
+  }
+
+  const json = (await response.json()) as {
+    title?: string;
+    collections?: Array<{
+      id?: string;
+      title?: string;
+      description?: string;
+      links?: Array<{ rel?: string; href?: string; type?: string }>;
+    }>;
+  };
+
+  const apiTitle = json.title || normalized;
+  const collections = Array.isArray(json.collections) ? json.collections : [];
+
+  return collections
+    .filter((collection): collection is { id: string; title?: string; description?: string; links?: Array<{ rel?: string; href?: string; type?: string }> } => Boolean(collection?.id))
+    .map((collection) => {
+      const linkedItemsUrl =
+        collection.links?.find((link) => link.rel === "items")?.href ||
+        collection.links?.find((link) => link.rel === "http://www.opengis.net/def/rel/ogc/1.0/items")?.href;
+      const itemsUrl = linkedItemsUrl || `${normalized}/collections/${collection.id}/items`;
+
+      return {
+        apiTitle,
+        id: collection.id,
+        title: collection.title || collection.id,
+        description: collection.description || "",
+        itemsUrl,
+      };
+    });
+}
+
+export async function loadPdokCatalog(apiRoots = PDOK_API_ROOTS): Promise<PdokCatalogCollection[]> {
+  const discoveredRoots = await discoverPdokApiRootsFromLanding();
+  const uniqueRoots = Array.from(new Set([...apiRoots, ...discoveredRoots]));
+  const settled = await Promise.allSettled(uniqueRoots.map((root) => fetchPdokCollections(root)));
+  const allCollections: PdokCatalogCollection[] = [];
+
+  for (const result of settled) {
+    if (result.status === "fulfilled") {
+      allCollections.push(...result.value);
+    }
+  }
+
+  const seen = new Set<string>();
+  return allCollections.filter((collection) => {
+    const key = `${collection.apiTitle}::${collection.id}::${collection.itemsUrl}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+async function discoverPdokApiRootsFromLanding(): Promise<string[]> {
+  try {
+    const response = await fetch(PDOK_LANDING_PAGE);
+    if (!response.ok) return [];
+    const html = await response.text();
+
+    const matches = html.match(/https:\/\/api\.pdok\.nl\/[a-z0-9-_/]+\/ogc\/v\d+\/?/gi) || [];
+    return Array.from(new Set(matches.map((match) => match.replace(/\/+$/, ""))));
+  } catch {
+    return [];
+  }
 }
 
