@@ -109,6 +109,17 @@ function extractAhnValue(rawText: string): string {
   return text.slice(0, 180) || "Geen waarde gevonden";
 }
 
+function isNoResultResponse(rawText: string): boolean {
+  const normalized = rawText.toLowerCase();
+  return (
+    normalized.includes("search returned no results") ||
+    normalized.includes("no results") ||
+    normalized.includes("none found") ||
+    normalized.includes("nan") ||
+    normalized.trim() === ""
+  );
+}
+
 interface FeatureInfoProps {
   feature: google.maps.Data.Feature | null;
   onClose: () => void;
@@ -395,44 +406,64 @@ export default function Twin() {
 
     const lat = latLng.lat();
     const lng = latLng.lng();
-    const delta = 0.0005;
-    const bbox = `${lng - delta},${lat - delta},${lng + delta},${lat + delta}`;
     const width = 256;
     const height = 256;
     const i = Math.floor(width / 2);
     const j = Math.floor(height / 2);
 
-    const params = new URLSearchParams({
-      SERVICE: "WMS",
-      VERSION: "1.1.1",
-      REQUEST: "GetFeatureInfo",
-      SRS: "EPSG:4326",
-      BBOX: bbox,
-      WIDTH: String(width),
-      HEIGHT: String(height),
-      LAYERS: sourceLayerName,
-      QUERY_LAYERS: sourceLayerName,
-      INFO_FORMAT: "text/plain",
-      X: String(i),
-      Y: String(j),
-      FEATURE_COUNT: "1",
-    });
+    const attempts: Array<{ version: "1.1.1" | "1.3.0"; delta: number; infoFormat: string }> = [
+      { version: "1.1.1", delta: 0.0005, infoFormat: "text/plain" },
+      { version: "1.3.0", delta: 0.0005, infoFormat: "text/plain" },
+      { version: "1.1.1", delta: 0.001, infoFormat: "text/plain" },
+      { version: "1.3.0", delta: 0.001, infoFormat: "text/plain" },
+      { version: "1.1.1", delta: 0.002, infoFormat: "text/html" },
+    ];
 
-    try {
-      const response = await fetch(`${layer.ahnWmsBaseUrl}?${params.toString()}`);
-      if (!response.ok) return null;
-      const raw = await response.text();
-      const value = extractAhnValue(raw);
-      return {
-        layerId: layer.id,
-        layerName: layer.name,
-        sourceLayerName,
-        value,
-        raw,
-      };
-    } catch {
-      return null;
+    for (const attempt of attempts) {
+      const bbox = `${lng - attempt.delta},${lat - attempt.delta},${lng + attempt.delta},${lat + attempt.delta}`;
+      const params = new URLSearchParams({
+        SERVICE: "WMS",
+        VERSION: attempt.version,
+        REQUEST: "GetFeatureInfo",
+        BBOX: bbox,
+        WIDTH: String(width),
+        HEIGHT: String(height),
+        LAYERS: sourceLayerName,
+        QUERY_LAYERS: sourceLayerName,
+        INFO_FORMAT: attempt.infoFormat,
+        FEATURE_COUNT: "1",
+      });
+
+      if (attempt.version === "1.3.0") {
+        params.set("CRS", "EPSG:4326");
+        params.set("I", String(i));
+        params.set("J", String(j));
+      } else {
+        params.set("SRS", "EPSG:4326");
+        params.set("X", String(i));
+        params.set("Y", String(j));
+      }
+
+      try {
+        const response = await fetch(`${layer.ahnWmsBaseUrl}?${params.toString()}`);
+        if (!response.ok) continue;
+        const raw = await response.text();
+        if (isNoResultResponse(raw)) continue;
+
+        const value = extractAhnValue(raw);
+        return {
+          layerId: layer.id,
+          layerName: layer.name,
+          sourceLayerName,
+          value,
+          raw,
+        };
+      } catch {
+        continue;
+      }
     }
+
+    return null;
   }, []);
 
   useEffect(() => {
