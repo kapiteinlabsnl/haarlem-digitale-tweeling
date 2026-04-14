@@ -105,8 +105,11 @@ function pickAhnLayerName(layer: LayerConfig, candidates: string[]): string | nu
 function extractAhnValue(rawText: string): string {
   const text = rawText.replace(/\s+/g, " ").trim();
   const numberMatch = text.match(/-?\d+([.,]\d+)?/);
-  if (numberMatch) return numberMatch[0].replace(",", ".");
-  return text.slice(0, 180) || "Geen waarde gevonden";
+  if (numberMatch) {
+    const numeric = Number(numberMatch[0].replace(",", "."));
+    if (Number.isFinite(numeric)) return `${numeric.toFixed(2)} m`;
+  }
+  return "";
 }
 
 function isNoResultResponse(rawText: string): boolean {
@@ -451,6 +454,7 @@ export default function Twin() {
         if (isNoResultResponse(raw)) continue;
 
         const value = extractAhnValue(raw);
+        if (!value) continue;
         return {
           layerId: layer.id,
           layerName: layer.name,
@@ -499,6 +503,8 @@ export default function Twin() {
           return;
         }
       }
+      // No feature info found at this click location; keep UI quiet.
+      setSelectedAhnInfo(null);
     });
 
     return () => listener.remove();
