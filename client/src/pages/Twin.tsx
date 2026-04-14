@@ -75,7 +75,7 @@ interface AhnInfoResult {
   raw: string;
 }
 
-type SentinelLayerMode = "S2_TRUE_COLOR" | "S2_NDVI" | "S5P_NO2";
+type SentinelLayerMode = "S2_TRUE_COLOR" | "S2_NDVI";
 
 const SENTINEL_PROXY_BASE_URL =
   (import.meta.env.VITE_SENTINEL_PROXY_BASE_URL || "https://haarlem-sentinel-proxy.carl-6ae.workers.dev").replace(/\/+$/, "");
@@ -99,16 +99,6 @@ function evaluatePixel(sample) {
   return [0.0, 0.45, 0.0];
 }`;
   }
-  if (mode === "S5P_NO2") {
-    return `//VERSION=3
-function setup() {
-  return { input: ["NO2"], output: { bands: 3 } };
-}
-function evaluatePixel(sample) {
-  const v = Math.max(0, Math.min(1, sample.NO2 * 8000.0));
-  return [v, Math.max(0, 1.0 - v), Math.max(0, 1.0 - 2.0 * v)];
-}`;
-  }
   return `//VERSION=3
 function setup() {
   return { input: ["B04", "B03", "B02"], output: { bands: 3 } };
@@ -119,9 +109,6 @@ function evaluatePixel(sample) {
 }
 
 function getSentinelCollections(mode: SentinelLayerMode): string[] {
-  if (mode === "S5P_NO2") {
-    return ["sentinel-5p-l2"];
-  }
   return ["sentinel-2-l2a"];
 }
 
@@ -532,12 +519,7 @@ export default function Twin() {
           to: toIsoDate(sentinelToDate, true),
         },
       };
-      if (sentinelMode !== "S5P_NO2") {
-        dataFilter.maxCloudCoverage = sentinelCloud;
-      } else {
-        dataFilter.timeliness = "OFFL";
-        dataFilter.mosaickingOrder = "mostRecent";
-      }
+      dataFilter.maxCloudCoverage = sentinelCloud;
 
       const collectionCandidates = getSentinelCollections(sentinelMode);
       let blob: Blob | null = null;
@@ -812,7 +794,6 @@ export default function Twin() {
                   >
                     <option value="S2_TRUE_COLOR">S2 True Color</option>
                     <option value="S2_NDVI">S2 NDVI</option>
-                    <option value="S5P_NO2">S5P NO2 (luchtkwaliteit)</option>
                   </select>
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -838,15 +819,13 @@ export default function Twin() {
                       max={100}
                       value={sentinelCloud}
                       onChange={(e) => setSentinelCloud(Number(e.target.value))}
-                      disabled={sentinelMode === "S5P_NO2"}
+                      disabled={false}
                       className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white disabled:bg-gray-100"
                       placeholder="Bijv. 20"
                     />
-                    {sentinelMode !== "S5P_NO2" && (
-                      <p className="text-[11px] text-gray-500">
-                        Lager percentage = minder wolken, maar minder beschikbare beelden.
-                      </p>
-                    )}
+                    <p className="text-[11px] text-gray-500">
+                      Lager percentage = minder wolken, maar minder beschikbare beelden.
+                    </p>
                   </div>
                   <div className="flex gap-2">
                     <button
