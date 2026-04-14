@@ -32,6 +32,7 @@ import {
   RefreshCw,
   ExternalLink,
   SlidersHorizontal,
+  Settings2,
 } from "lucide-react";
 
 const iconMap: Record<string, React.ReactNode> = {
@@ -181,6 +182,10 @@ export default function Twin() {
   const [pdokUseViewportBbox, setPdokUseViewportBbox] = useState(true);
   const [pdokCatalogLoading, setPdokCatalogLoading] = useState(false);
   const [pdokCatalogLayers, setPdokCatalogLayers] = useState<LayerConfig[]>([]);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
+  const [statsPanelOpen, setStatsPanelOpen] = useState(false);
+  const [renderStatusPanelOpen, setRenderStatusPanelOpen] = useState(false);
+  const [serviceLinksPanelOpen, setServiceLinksPanelOpen] = useState(false);
   const [layerRenderStatus, setLayerRenderStatus] = useState<Record<string, LayerRenderStatus>>({});
   const [vectorFillOpacity, setVectorFillOpacity] = useState(0.25);
   const [vectorStrokeWeight, setVectorStrokeWeight] = useState(2);
@@ -677,36 +682,58 @@ export default function Twin() {
               />
             </div>
             <div className="mt-3 space-y-2">
-              <div className="rounded-md border border-gray-200 bg-white p-2 space-y-2">
-                <div className="flex items-center gap-2 text-xs font-semibold text-gray-700">
-                  <SlidersHorizontal className="w-3 h-3" />
-                  Vector stijl
+              <button
+                type="button"
+                onClick={() => setAdvancedToolsOpen((open) => !open)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-sm rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+              >
+                <span className="inline-flex items-center gap-2">
+                  <Settings2 className="w-4 h-4" />
+                  Geavanceerde PDOK tools
+                </span>
+                {advancedToolsOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              </button>
+              {advancedToolsOpen && (
+                <div className="rounded-md border border-gray-200 bg-white p-2 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                    <SlidersHorizontal className="w-3 h-3" />
+                    Vector stijl
+                  </div>
+                  <label className="block text-xs text-gray-600">
+                    Vlak transparantie: {vectorFillOpacity.toFixed(2)}
+                    <input
+                      className="w-full"
+                      type="range"
+                      min="0.05"
+                      max="0.9"
+                      step="0.05"
+                      value={vectorFillOpacity}
+                      onChange={(e) => setVectorFillOpacity(Number(e.target.value))}
+                    />
+                  </label>
+                  <label className="block text-xs text-gray-600">
+                    Lijnbreedte: {vectorStrokeWeight}
+                    <input
+                      className="w-full"
+                      type="range"
+                      min="1"
+                      max="6"
+                      step="1"
+                      value={vectorStrokeWeight}
+                      onChange={(e) => setVectorStrokeWeight(Number(e.target.value))}
+                    />
+                  </label>
+                  <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <input
+                      id="pdok-bbox-toggle"
+                      type="checkbox"
+                      checked={pdokUseViewportBbox}
+                      onChange={(e) => setPdokUseViewportBbox(e.target.checked)}
+                    />
+                    <label htmlFor="pdok-bbox-toggle">Gebruik viewport bbox voor PDOK requests</label>
+                  </div>
                 </div>
-                <label className="block text-xs text-gray-600">
-                  Vlak transparantie: {vectorFillOpacity.toFixed(2)}
-                  <input
-                    className="w-full"
-                    type="range"
-                    min="0.05"
-                    max="0.9"
-                    step="0.05"
-                    value={vectorFillOpacity}
-                    onChange={(e) => setVectorFillOpacity(Number(e.target.value))}
-                  />
-                </label>
-                <label className="block text-xs text-gray-600">
-                  Lijnbreedte: {vectorStrokeWeight}
-                  <input
-                    className="w-full"
-                    type="range"
-                    min="1"
-                    max="6"
-                    step="1"
-                    value={vectorStrokeWeight}
-                    onChange={(e) => setVectorStrokeWeight(Number(e.target.value))}
-                  />
-                </label>
-              </div>
+              )}
               <button
                 type="button"
                 onClick={loadBulkPdokCatalogLayers}
@@ -715,15 +742,6 @@ export default function Twin() {
               >
                 {pdokCatalogLoading ? "PDOK catalogus laden..." : `Laad volledige PDOK catalogus (${pdokCatalogLayers.length})`}
               </button>
-              <div className="flex items-center gap-2 text-xs text-gray-600">
-                <input
-                  id="pdok-bbox-toggle"
-                  type="checkbox"
-                  checked={pdokUseViewportBbox}
-                  onChange={(e) => setPdokUseViewportBbox(e.target.checked)}
-                />
-                <label htmlFor="pdok-bbox-toggle">Gebruik viewport bbox voor PDOK requests</label>
-              </div>
               <input
                 type="text"
                 placeholder="Filter actieve PDOK eigenschappen..."
@@ -817,60 +835,84 @@ export default function Twin() {
           <div className="p-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 shrink-0 space-y-2">
             {activePdokStats.length > 0 && (
               <div className="space-y-1">
-                <div className="font-semibold text-gray-700">PDOK viewport samenvatting</div>
-                {activePdokStats.map((item) => (
-                  <div key={item.id}>
-                    {item.name}: {item.inViewport}/{item.visible}
-                  </div>
-                ))}
+                <button
+                  type="button"
+                  onClick={() => setStatsPanelOpen((open) => !open)}
+                  className="w-full flex items-center justify-between text-left font-semibold text-gray-700"
+                >
+                  <span>PDOK viewport samenvatting</span>
+                  {statsPanelOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                </button>
+                {statsPanelOpen &&
+                  activePdokStats.map((item) => (
+                    <div key={item.id}>
+                      {item.name}: {item.inViewport}/{item.visible}
+                    </div>
+                  ))}
               </div>
             )}
             {activeRenderStatuses.length > 0 && (
               <div className="space-y-1">
-                <div className="font-semibold text-gray-700">Renderstatus</div>
-                {activeRenderStatuses.map((item) => (
-                  <div key={item.id}>
-                    {item.name}: {item.status.mode}
-                    {item.status.detail ? ` (${item.status.detail})` : ""}
-                  </div>
-                ))}
+                <button
+                  type="button"
+                  onClick={() => setRenderStatusPanelOpen((open) => !open)}
+                  className="w-full flex items-center justify-between text-left font-semibold text-gray-700"
+                >
+                  <span>Renderstatus</span>
+                  {renderStatusPanelOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                </button>
+                {renderStatusPanelOpen &&
+                  activeRenderStatuses.map((item) => (
+                    <div key={item.id}>
+                      {item.name}: {item.status.mode}
+                      {item.status.detail ? ` (${item.status.detail})` : ""}
+                    </div>
+                  ))}
               </div>
             )}
             {activePdokLinks.length > 0 && (
               <div className="space-y-1">
-                <div className="font-semibold text-gray-700">PDOK service-links</div>
-                {activePdokLinks.slice(0, 5).map(({ layer, links }) => (
-                  <div key={layer.id} className="space-y-1">
-                    <div className="text-gray-700">{layer.name}</div>
-                    <div className="flex flex-wrap gap-2">
-                      {links.collection && (
-                        <a href={links.collection} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
-                          Collection <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                      {links.items && (
-                        <a href={links.items} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
-                          Items <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                      {links.tiles && (
-                        <a href={links.tiles} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
-                          Tiles <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                      {links.styles && (
-                        <a href={links.styles} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
-                          Styles <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
-                      {links.api && (
-                        <a href={links.api} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
-                          OpenAPI <ExternalLink className="w-3 h-3" />
-                        </a>
-                      )}
+                <button
+                  type="button"
+                  onClick={() => setServiceLinksPanelOpen((open) => !open)}
+                  className="w-full flex items-center justify-between text-left font-semibold text-gray-700"
+                >
+                  <span>PDOK service-links</span>
+                  {serviceLinksPanelOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                </button>
+                {serviceLinksPanelOpen &&
+                  activePdokLinks.slice(0, 5).map(({ layer, links }) => (
+                    <div key={layer.id} className="space-y-1">
+                      <div className="text-gray-700">{layer.name}</div>
+                      <div className="flex flex-wrap gap-2">
+                        {links.collection && (
+                          <a href={links.collection} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                            Collection <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                        {links.items && (
+                          <a href={links.items} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                            Items <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                        {links.tiles && (
+                          <a href={links.tiles} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                            Tiles <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                        {links.styles && (
+                          <a href={links.styles} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                            Styles <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                        {links.api && (
+                          <a href={links.api} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 underline">
+                            OpenAPI <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
               </div>
             )}
             <div>
