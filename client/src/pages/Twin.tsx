@@ -104,11 +104,25 @@ function pickAhnLayerName(layer: LayerConfig, candidates: string[]): string | nu
 
 function extractAhnValue(rawText: string): string {
   const text = rawText.replace(/\s+/g, " ").trim();
-  const numberMatch = text.match(/-?\d+([.,]\d+)?/);
-  if (numberMatch) {
-    const numeric = Number(numberMatch[0].replace(",", "."));
+
+  // Prefer structured JSON values from raster info when available.
+  try {
+    const parsed = JSON.parse(rawText) as unknown;
+    const jsonValue = extractNumericFromJson(parsed);
+    if (jsonValue !== null) return `${jsonValue.toFixed(2)} m`;
+  } catch {
+    // Not JSON, continue with plain-text parsing.
+  }
+
+  // Prefer key-value patterns from text/plain responses.
+  const keyValueMatch = text.match(
+    /(gray_index|value|pixel|band\d*|elevation|hoogte)\s*[:=]\s*(-?\d+(?:[.,]\d+)?)/i
+  );
+  if (keyValueMatch) {
+    const numeric = Number(keyValueMatch[2].replace(",", "."));
     if (Number.isFinite(numeric)) return `${numeric.toFixed(2)} m`;
   }
+
   return "";
 }
 
@@ -121,6 +135,35 @@ function isNoResultResponse(rawText: string): boolean {
     normalized.includes("nan") ||
     normalized.trim() === ""
   );
+}
+
+function extractNumericFromJson(payload: unknown): number | null {
+  if (!payload || typeof payload !== "object") return null;
+
+  const candidates: number[] = [];
+  const targetKeys = /(gray|value|pixel|band|elev|height|hoogte|z)/i;
+
+  const walk = (node: unknown) => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item);
+      return;
+    }
+
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (typeof value === "number" && Number.isFinite(value) && targetKeys.test(key)) {
+        candidates.push(value);
+      } else if (typeof value === "string" && targetKeys.test(key)) {
+        const parsed = Number(value.replace(",", "."));
+        if (Number.isFinite(parsed)) candidates.push(parsed);
+      } else if (typeof value === "object") {
+        walk(value);
+      }
+    }
+  };
+
+  walk(payload);
+  return candidates.length > 0 ? candidates[0] : null;
 }
 
 interface FeatureInfoProps {
@@ -415,6 +458,8 @@ export default function Twin() {
     const j = Math.floor(height / 2);
 
     const attempts: Array<{ version: "1.1.1" | "1.3.0"; delta: number; infoFormat: string }> = [
+      { version: "1.1.1", delta: 0.0005, infoFormat: "application/json" },
+      { version: "1.3.0", delta: 0.0005, infoFormat: "application/json" },
       { version: "1.1.1", delta: 0.0005, infoFormat: "text/plain" },
       { version: "1.3.0", delta: 0.0005, infoFormat: "text/plain" },
       { version: "1.1.1", delta: 0.001, infoFormat: "text/plain" },
