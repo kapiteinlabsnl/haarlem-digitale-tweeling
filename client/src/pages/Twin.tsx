@@ -77,16 +77,8 @@ interface AhnInfoResult {
 
 type SentinelLayerMode = "S2_TRUE_COLOR" | "S2_NDVI" | "S5P_NO2";
 
-const SENTINEL_TOKEN_URL = "https://services.sentinel-hub.com/oauth/token";
-const SENTINEL_PROCESS_URL = "https://services.sentinel-hub.com/api/v1/process";
-const SENTINEL_CLIENT_ID_HARDCODED = "4c1022aa-b65a-4505-b306-bf247896dcc7";
-const SENTINEL_CLIENT_SECRET_HARDCODED = "7DSMaJFLZJSEmPT9UYdGAeXQVg10VrUI";
-const SENTINEL_CLIENT_ID = (
-  SENTINEL_CLIENT_ID_HARDCODED || import.meta.env.VITE_SENTINEL_CLIENT_ID || ""
-).trim();
-const SENTINEL_CLIENT_SECRET = (
-  SENTINEL_CLIENT_SECRET_HARDCODED || import.meta.env.VITE_SENTINEL_CLIENT_SECRET || ""
-).trim();
+const SENTINEL_PROXY_BASE_URL =
+  (import.meta.env.VITE_SENTINEL_PROXY_BASE_URL || "https://haarlem-sentinel-proxy.carl-6ae.workers.dev").replace(/\/+$/, "");
 
 function toIsoDate(value: string, endOfDay = false): string {
   return `${value}T${endOfDay ? "23:59:59" : "00:00:00"}Z`;
@@ -291,7 +283,6 @@ export default function Twin() {
   const ahnResolvedLayerRef = useRef<Map<string, string>>(new Map());
   const sentinelOverlayRef = useRef<google.maps.GroundOverlay | null>(null);
   const sentinelOverlayUrlRef = useRef<string | null>(null);
-  const sentinelTokenRef = useRef<{ token: string; expiresAt: number } | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -522,35 +513,6 @@ export default function Twin() {
     }
   }, []);
 
-  const getSentinelToken = useCallback(async (): Promise<string> => {
-    const now = Date.now();
-    if (sentinelTokenRef.current && sentinelTokenRef.current.expiresAt - now > 30000) {
-      return sentinelTokenRef.current.token;
-    }
-
-    if (!SENTINEL_CLIENT_ID || !SENTINEL_CLIENT_SECRET) {
-      throw new Error("Sentinel credentials ontbreken. Stel VITE_SENTINEL_CLIENT_ID en VITE_SENTINEL_CLIENT_SECRET in.");
-    }
-
-    const body = new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: SENTINEL_CLIENT_ID,
-      client_secret: SENTINEL_CLIENT_SECRET,
-    });
-    const response = await fetch(SENTINEL_TOKEN_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body,
-    });
-    if (!response.ok) throw new Error(`Sentinel token mislukt (${response.status})`);
-    const json = (await response.json()) as { access_token: string; expires_in: number };
-    sentinelTokenRef.current = {
-      token: json.access_token,
-      expiresAt: Date.now() + json.expires_in * 1000,
-    };
-    return json.access_token;
-  }, []);
-
   const renderSentinelOverlay = useCallback(async () => {
     if (!mapRef.current) return;
     const bounds = mapRef.current.getBounds();
@@ -559,7 +521,6 @@ export default function Twin() {
     setSentinelLoading(true);
     setSentinelError(null);
     try {
-      const token = await getSentinelToken();
       const sw = bounds.getSouthWest();
       const ne = bounds.getNorthEast();
       const dataFilter: Record<string, unknown> = {
@@ -585,10 +546,9 @@ export default function Twin() {
         evalscript: getSentinelEvalscript(sentinelMode),
       };
 
-      const response = await fetch(SENTINEL_PROCESS_URL, {
+      const response = await fetch(`${SENTINEL_PROXY_BASE_URL}/process`, {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify(payload),
@@ -615,7 +575,7 @@ export default function Twin() {
     } finally {
       setSentinelLoading(false);
     }
-  }, [clearSentinelOverlay, getSentinelToken, sentinelCloud, sentinelFromDate, sentinelMode, sentinelToDate]);
+  }, [clearSentinelOverlay, sentinelCloud, sentinelFromDate, sentinelMode, sentinelToDate]);
 
   const queryAhnFeatureInfo = useCallback(async (layer: LayerConfig, latLng: google.maps.LatLng): Promise<AhnInfoResult | null> => {
     if (!layer.ahnWmsBaseUrl) return null;
