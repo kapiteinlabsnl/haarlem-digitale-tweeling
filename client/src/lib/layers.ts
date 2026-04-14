@@ -1,14 +1,12 @@
 export interface LayerConfig {
   id: string;
   name: string;
-  source: "haarlem-wfs" | "pdok-ogc-features";
+  source: "haarlem-wfs" | "ahn-wms";
   wfsLayer?: string;
-  pdokCollectionUrl?: string;
-  pdokIdField?: string;
-  pdokTilesUrl?: string;
-  pdokApiRoot?: string;
-  pdokCollectionId?: string;
-  pdokDescription?: string;
+  ahnWmsBaseUrl?: string;
+  ahnWmsLayer?: string;
+  ahnWmsFormat?: string;
+  ahnTransparent?: boolean;
   icon?: string;
   color: string;
   visible: boolean;
@@ -94,28 +92,38 @@ export const themes: ThemeConfig[] = [
       { id: "stadsdelen", name: "Stadsdelen", source: "haarlem-wfs", wfsLayer: "stadsdeel", color: "#8B5CF6", visible: false, category: "topografie" },
       { id: "postcode4", name: "Postcode 4 posities", source: "haarlem-wfs", wfsLayer: "postcode4", color: "#A78BFA", visible: false, category: "topografie" },
       {
-        id: "pdok_bag_panden",
-        name: "PDOK BAG panden",
-        source: "pdok-ogc-features",
-        pdokApiRoot: "https://api.pdok.nl/kadaster/bag/ogc/v2",
-        pdokCollectionId: "pand",
-        pdokCollectionUrl: "https://api.pdok.nl/kadaster/bag/ogc/v2/collections/pand/items",
-        pdokTilesUrl: "https://api.pdok.nl/kadaster/bag/ogc/v2/collections/pand/tiles",
-        pdokIdField: "identificatie",
+        id: "ahn_dsm",
+        name: "AHN Hoogtemodel (DSM 0.5m)",
+        source: "ahn-wms",
+        ahnWmsBaseUrl: "https://service.pdok.nl/rws/ahn/wms/v1_0",
+        ahnWmsLayer: "ahn3_05m_dsm",
+        ahnWmsFormat: "image/png",
+        ahnTransparent: true,
+        color: "#06B6D4",
+        visible: false,
+        category: "topografie",
+      },
+      {
+        id: "ahn_dtm",
+        name: "AHN Terreinhoogte (DTM 0.5m)",
+        source: "ahn-wms",
+        ahnWmsBaseUrl: "https://service.pdok.nl/rws/ahn/wms/v1_0",
+        ahnWmsLayer: "ahn3_05m_dtm",
+        ahnWmsFormat: "image/png",
+        ahnTransparent: true,
         color: "#0EA5E9",
         visible: false,
         category: "topografie",
       },
       {
-        id: "pdok_bestuurlijke_gebieden",
-        name: "PDOK bestuurlijke gebieden",
-        source: "pdok-ogc-features",
-        pdokApiRoot: "https://api.pdok.nl/kadaster/brk-administratieve-eenheden/ogc/v1",
-        pdokCollectionId: "administratieveeenheden",
-        pdokCollectionUrl: "https://api.pdok.nl/kadaster/brk-administratieve-eenheden/ogc/v1/collections/administratieveeenheden/items",
-        pdokTilesUrl: "https://api.pdok.nl/kadaster/brk-administratieve-eenheden/ogc/v1/collections/administratieveeenheden/tiles",
-        pdokIdField: "inspireid_localid",
-        color: "#4F46E5",
+        id: "ahn_footage",
+        name: "AHN Footage / Beeldmateriaal",
+        source: "ahn-wms",
+        ahnWmsBaseUrl: "https://service.pdok.nl/rws/ahn/wms/v1_0",
+        ahnWmsLayer: "ahn3_05m_dsm",
+        ahnWmsFormat: "image/jpeg",
+        ahnTransparent: false,
+        color: "#2563EB",
         visible: false,
         category: "topografie",
       },
