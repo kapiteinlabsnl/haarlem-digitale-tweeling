@@ -120,7 +120,7 @@ function evaluatePixel(sample) {
 
 function getSentinelCollections(mode: SentinelLayerMode): string[] {
   if (mode === "S5P_NO2") {
-    return ["sentinel-5p-l2", "sentinel-5p-l2-offl", "sentinel-5p-l2-nrti"];
+    return ["sentinel-5p-l2"];
   }
   return ["sentinel-2-l2a"];
 }
@@ -534,6 +534,9 @@ export default function Twin() {
       };
       if (sentinelMode !== "S5P_NO2") {
         dataFilter.maxCloudCoverage = sentinelCloud;
+      } else {
+        dataFilter.timeliness = "OFFL";
+        dataFilter.mosaickingOrder = "mostRecent";
       }
 
       const collectionCandidates = getSentinelCollections(sentinelMode);
