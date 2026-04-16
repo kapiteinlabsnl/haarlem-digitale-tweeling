@@ -79,6 +79,10 @@ type SentinelLayerMode = "S2_TRUE_COLOR" | "S2_NDVI";
 
 const SENTINEL_PROXY_BASE_URL =
   (import.meta.env.VITE_SENTINEL_PROXY_BASE_URL || "https://haarlem-sentinel-proxy.carl-6ae.workers.dev").replace(/\/+$/, "");
+const HAARLEM_KAART_URL = "https://kaart.haarlem.nl";
+const HAARLEM_GEOSERVER_URL = "https://data.haarlem.nl/geoserver/";
+const HAARLEM_WFS_CAPABILITIES_URL = "https://data.haarlem.nl/geoserver/wfs?request=getcapabilities";
+const HAARLEM_WMS_CAPABILITIES_URL = "https://data.haarlem.nl/geoserver/ows?service=WMS&request=GetCapabilities";
 
 function toIsoDate(value: string, endOfDay = false): string {
   return `${value}T${endOfDay ? "23:59:59" : "00:00:00"}Z`;
@@ -247,7 +251,7 @@ function FeatureInfoPanel({ feature, onClose }: FeatureInfoProps) {
                   <td className="py-1.5 text-[#1E293B] break-words">
                     {value.startsWith("http") ? (
                       <a href={value} target="_blank" rel="noopener noreferrer" className="text-[#D52B1E] underline">
-                        Link
+                        Openen
                       </a>
                     ) : (
                       value
@@ -769,6 +773,62 @@ export default function Twin() {
           </div>
 
           <div className="flex-1 overflow-y-auto">
+            <div className="border-b border-gray-100 bg-gray-50/40">
+              <div className="px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-[#D52B1E]" />
+                  <span className="font-semibold text-sm text-[#1E293B]">Geo-services</span>
+                </div>
+                <p className="mt-2 text-xs text-gray-500 leading-relaxed">
+                  Officiele ingangen naar de kaartomgeving en geo-services van Haarlem voor kaartgebruik en GIS-toepassingen.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {[
+                    {
+                      title: "Officiele kaart",
+                      description: "Open de publieke kaartomgeving van Haarlem.",
+                      href: HAARLEM_KAART_URL,
+                      primary: true,
+                    },
+                    {
+                      title: "GeoServer",
+                      description: "Technische ingang voor de kaartservices en datasets.",
+                      href: HAARLEM_GEOSERVER_URL,
+                    },
+                    {
+                      title: "WFS GetCapabilities",
+                      description: "Overzicht van beschikbare feature-lagen en WFS-operaties.",
+                      href: HAARLEM_WFS_CAPABILITIES_URL,
+                    },
+                    {
+                      title: "WMS GetCapabilities",
+                      description: "Overzicht van beschikbare kaartlagen en WMS-operaties.",
+                      href: HAARLEM_WMS_CAPABILITIES_URL,
+                    },
+                  ].map((service) => (
+                    <a
+                      key={service.title}
+                      href={service.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`block rounded-md border px-3 py-2 transition-colors ${
+                        service.primary
+                          ? "border-[#D52B1E] bg-[#D52B1E] text-white hover:bg-[#B91C1C]"
+                          : "border-gray-200 bg-white hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className={`text-xs font-semibold ${service.primary ? "text-white" : "text-[#1E293B]"}`}>
+                        {service.title}
+                      </div>
+                      <div className={`mt-1 text-[11px] leading-relaxed ${service.primary ? "text-white/85" : "text-gray-500"}`}>
+                        {service.description}
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             <div className="border-b border-gray-100">
               <button
                 onClick={() => setSentinelOpen((prev) => !prev)}
@@ -792,8 +852,8 @@ export default function Twin() {
                     onChange={(e) => setSentinelMode(e.target.value as SentinelLayerMode)}
                     className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white"
                   >
-                    <option value="S2_TRUE_COLOR">S2 True Color</option>
-                    <option value="S2_NDVI">S2 NDVI</option>
+                    <option value="S2_TRUE_COLOR">Sentinel-2 natuurlijke kleuren</option>
+                    <option value="S2_NDVI">Sentinel-2 NDVI</option>
                   </select>
                   <div className="grid grid-cols-2 gap-2">
                     <input
@@ -833,7 +893,7 @@ export default function Twin() {
                       disabled={sentinelLoading}
                       className="flex-1 bg-[#D52B1E] hover:bg-[#B91C1C] text-white rounded-md px-2.5 py-2 text-xs font-semibold disabled:opacity-60"
                     >
-                      {sentinelLoading ? "Laden..." : "Render Sentinel"}
+                      {sentinelLoading ? "Laden..." : "Toon satellietlaag"}
                     </button>
                     <button
                       onClick={clearSentinelOverlay}
@@ -915,7 +975,7 @@ export default function Twin() {
                 ))}
               </div>
             )}
-            Data:{" "}
+              Bronnen:{" "}
             <a href="https://data.haarlem.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
               data.haarlem.nl
             </a>{" "}
