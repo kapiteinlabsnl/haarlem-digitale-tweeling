@@ -114,17 +114,6 @@ export default function Home() {
             </Link>
           ))}
 
-          {/* "Bekijk alle kaartlagen" tile */}
-          <Link
-            href="/twin"
-            className="group relative bg-[#FEF2F2] border-2 border-[#D52B1E] rounded-lg overflow-hidden p-6 sm:p-8 flex flex-col justify-center items-center min-h-[160px] hover:bg-[#FEE2E2] transition-all duration-200 hover:scale-[1.02]"
-          >
-            <MapPin className="w-8 h-8 text-[#D52B1E] mb-2" />
-            <span className="text-[#D52B1E] font-bold text-base text-center">
-              Of bekijk alle kaartlagen
-            </span>
-          </Link>
-
           {/* Sentinel tile */}
           <Link
             href="/twin?sentinel=1"
@@ -151,6 +140,17 @@ export default function Home() {
               <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">Meer Haarlem-data</h3>
               <p className="mt-1 text-sm text-white/70 leading-snug">Bekijk open data en cijfers</p>
             </div>
+          </Link>
+
+          {/* "Bekijk alle kaartlagen" tile (last) */}
+          <Link
+            href="/twin"
+            className="group relative bg-[#FEF2F2] border-2 border-[#D52B1E] rounded-lg overflow-hidden p-6 sm:p-8 flex flex-col justify-center items-center min-h-[160px] hover:bg-[#FEE2E2] transition-all duration-200 hover:scale-[1.02]"
+          >
+            <MapPin className="w-8 h-8 text-[#D52B1E] mb-2" />
+            <span className="text-[#D52B1E] font-bold text-base text-center">
+              Of bekijk alle kaartlagen
+            </span>
           </Link>
         </div>
       </section>
