@@ -949,11 +949,7 @@ export default function Twin() {
                         rel="noopener noreferrer"
                         className="block px-4 pl-12 py-2.5 hover:bg-gray-100/80 transition-colors"
                       >
-                        <div
-                          className={`text-sm ${
-                            service.primary ? "text-[#D52B1E] font-semibold" : "text-[#374151]"
-                          }`}
-                        >
+                        <div className="text-sm text-[#374151] font-medium">
                           {service.title}
                         </div>
                         <div className="mt-0.5 text-[11px] text-gray-500 leading-relaxed">
