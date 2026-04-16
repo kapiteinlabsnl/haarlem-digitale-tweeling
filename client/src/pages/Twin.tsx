@@ -297,6 +297,14 @@ export default function Twin() {
   const [sentinelError, setSentinelError] = useState<string | null>(null);
   const [meerHaarlemDataOpen, setMeerHaarlemDataOpen] = useState(false);
 
+  const hashSearchParams = useMemo(() => {
+    if (typeof window === "undefined") return new URLSearchParams();
+    const hash = window.location.hash || "";
+    const qIndex = hash.indexOf("?");
+    if (qIndex === -1) return new URLSearchParams();
+    return new URLSearchParams(hash.slice(qIndex + 1));
+  }, []);
+
   const toggleTheme = useCallback((themeId: string) => {
     setExpandedThemes((prev) => {
       const next = new Set(prev);
@@ -666,6 +674,12 @@ export default function Twin() {
       }
     }
   }, [params.theme, mapReady, activeLayers, toggleLayer]);
+
+  useEffect(() => {
+    // Allow deep-linking from the welcome page (e.g. /twin?sentinel=1&meerData=1)
+    if (hashSearchParams.get("sentinel") === "1") setSentinelOpen(true);
+    if (hashSearchParams.get("meerData") === "1") setMeerHaarlemDataOpen(true);
+  }, [hashSearchParams]);
 
   useEffect(() => {
     if (!mapRef.current) return;

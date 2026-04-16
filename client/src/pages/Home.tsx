@@ -15,6 +15,7 @@ import {
   Trees,
   Building,
   MapPin,
+  Satellite,
   Route,
   Landmark,
   ArrowRight,
@@ -122,6 +123,34 @@ export default function Home() {
             <span className="text-[#D52B1E] font-bold text-base text-center">
               Of bekijk alle kaartlagen
             </span>
+          </Link>
+
+          {/* Sentinel tile */}
+          <Link
+            href="/twin?sentinel=1"
+            className="group relative bg-[#D52B1E] rounded-lg overflow-hidden p-6 sm:p-8 flex flex-col justify-between min-h-[160px] hover:bg-[#B91C1C] transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
+          >
+            <div className="absolute top-4 right-4 text-white/25 group-hover:text-white/35 transition-colors">
+              <Satellite className="w-6 h-6" />
+            </div>
+            <div className="mt-auto">
+              <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">Sentinel satelliet</h3>
+              <p className="mt-1 text-sm text-white/70 leading-snug">Toon historische satellietbeelden</p>
+            </div>
+          </Link>
+
+          {/* Meer Haarlem-data tile */}
+          <Link
+            href="/twin?meerData=1"
+            className="group relative bg-[#D52B1E] rounded-lg overflow-hidden p-6 sm:p-8 flex flex-col justify-between min-h-[160px] hover:bg-[#B91C1C] transition-all duration-200 hover:scale-[1.02] hover:shadow-lg"
+          >
+            <div className="absolute top-4 right-4 text-white/25 group-hover:text-white/35 transition-colors">
+              <MapPin className="w-6 h-6" />
+            </div>
+            <div className="mt-auto">
+              <h3 className="text-lg sm:text-xl font-bold text-white leading-tight">Meer Haarlem-data</h3>
+              <p className="mt-1 text-sm text-white/70 leading-snug">Bekijk open data en cijfers</p>
+            </div>
           </Link>
         </div>
       </section>
