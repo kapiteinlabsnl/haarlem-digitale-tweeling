@@ -80,9 +80,8 @@ type SentinelLayerMode = "S2_TRUE_COLOR" | "S2_NDVI";
 const SENTINEL_PROXY_BASE_URL =
   (import.meta.env.VITE_SENTINEL_PROXY_BASE_URL || "https://haarlem-sentinel-proxy.carl-6ae.workers.dev").replace(/\/+$/, "");
 const HAARLEM_KAART_URL = "https://kaart.haarlem.nl";
-const HAARLEM_GEOSERVER_URL = "https://data.haarlem.nl/geoserver/";
-const HAARLEM_WFS_CAPABILITIES_URL = "https://data.haarlem.nl/geoserver/wfs?request=getcapabilities";
-const HAARLEM_WMS_CAPABILITIES_URL = "https://data.haarlem.nl/geoserver/ows?service=WMS&request=GetCapabilities";
+const HAARLEM_OPEN_DATA_URL = "https://haarlem.nl/open-data";
+const HAARLEM_CIJFERS_URL = "https://haarlem.incijfers.nl";
 
 function toIsoDate(value: string, endOfDay = false): string {
   return `${value}T${endOfDay ? "23:59:59" : "00:00:00"}Z`;
@@ -777,33 +776,28 @@ export default function Twin() {
               <div className="px-4 py-3">
                 <div className="flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-[#D52B1E]" />
-                  <span className="font-semibold text-sm text-[#1E293B]">Geo-services</span>
+                  <span className="font-semibold text-sm text-[#1E293B]">Meer Haarlem-data</span>
                 </div>
                 <p className="mt-2 text-xs text-gray-500 leading-relaxed">
-                  Officiele ingangen naar de kaartomgeving en geo-services van Haarlem voor kaartgebruik en GIS-toepassingen.
+                  Handige officiele ingangen naar kaarten, open data en cijfers van de gemeente Haarlem.
                 </p>
                 <div className="mt-3 space-y-2">
                   {[
                     {
-                      title: "Officiele kaart",
-                      description: "Open de publieke kaartomgeving van Haarlem.",
+                      title: "Bekijk Haarlem op de kaart",
+                      description: "Open de officiele kaartomgeving met themakaarten van Haarlem.",
                       href: HAARLEM_KAART_URL,
                       primary: true,
                     },
                     {
-                      title: "GeoServer",
-                      description: "Technische ingang voor de kaartservices en datasets.",
-                      href: HAARLEM_GEOSERVER_URL,
+                      title: "Open data",
+                      description: "Lees meer over open datasets en geo-informatie van de gemeente Haarlem.",
+                      href: HAARLEM_OPEN_DATA_URL,
                     },
                     {
-                      title: "WFS GetCapabilities",
-                      description: "Overzicht van beschikbare feature-lagen en WFS-operaties.",
-                      href: HAARLEM_WFS_CAPABILITIES_URL,
-                    },
-                    {
-                      title: "WMS GetCapabilities",
-                      description: "Overzicht van beschikbare kaartlagen en WMS-operaties.",
-                      href: HAARLEM_WMS_CAPABILITIES_URL,
+                      title: "Haarlem in cijfers",
+                      description: "Bekijk dashboards en statistieken over inwoners, wonen en leefomgeving.",
+                      href: HAARLEM_CIJFERS_URL,
                     },
                   ].map((service) => (
                     <a
