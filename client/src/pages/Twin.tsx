@@ -293,13 +293,6 @@ export default function Twin() {
   const [sentinelLoading, setSentinelLoading] = useState(false);
   const [sentinelError, setSentinelError] = useState<string | null>(null);
 
-  const EMBED_MAP_113_URL = "https://kaart.haarlem.nl/app/map/113";
-  const EMBED_MAP_18_URL =
-    "https://kaart.haarlem.nl/app/map/18?zoom=8&center=102878,487284&layerIds=8277171775847,2023047965861,3966423807308,8101568730459,6116779181505";
-
-  const [embedMap113Enabled, setEmbedMap113Enabled] = useState(false);
-  const [embedMap18Enabled, setEmbedMap18Enabled] = useState(false);
-
   const toggleTheme = useCallback((themeId: string) => {
     setExpandedThemes((prev) => {
       const next = new Set(prev);
@@ -750,276 +743,193 @@ export default function Twin() {
       <div className="flex-1 flex relative overflow-hidden">
         <div
           className={`${
-            sidebarOpen ? "w-80 lg:w-[720px]" : "w-0"
-          } transition-all duration-300 ease-in-out bg-white border-r border-gray-200 flex flex-row overflow-hidden z-20 absolute lg:relative h-full shadow-lg lg:shadow-none`}
+            sidebarOpen ? "w-80 lg:w-[360px]" : "w-0"
+          } transition-all duration-300 ease-in-out bg-white border-r border-gray-200 flex flex-col overflow-hidden z-20 absolute lg:relative h-full shadow-lg lg:shadow-none`}
         >
-          <div className="flex flex-col overflow-hidden w-full lg:w-[360px]">
-            <div className="p-4 border-b border-gray-100 shrink-0">
-              <div className="flex items-center gap-2 mb-3">
-                <Layers className="w-5 h-5 text-[#D52B1E]" />
-                <h2 className="font-bold text-[#1E293B] text-base">Kaartlagen</h2>
-                {activeLayers.size > 0 && (
-                  <span className="ml-auto bg-[#D52B1E] text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                    {activeLayers.size}
-                  </span>
+          <div className="p-4 border-b border-gray-100 shrink-0">
+            <div className="flex items-center gap-2 mb-3">
+              <Layers className="w-5 h-5 text-[#D52B1E]" />
+              <h2 className="font-bold text-[#1E293B] text-base">Kaartlagen</h2>
+              {activeLayers.size > 0 && (
+                <span className="ml-auto bg-[#D52B1E] text-white text-xs font-bold px-2 py-0.5 rounded-full">
+                  {activeLayers.size}
+                </span>
+              )}
+            </div>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Zoek kaartlaag..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D52B1E]/30 focus:border-[#D52B1E] transition-colors"
+              />
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            <div className="border-b border-gray-100">
+              <button
+                onClick={() => setSentinelOpen((prev) => !prev)}
+                className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+              >
+                <span className="text-[#D52B1E]">
+                  <Satellite className="w-4 h-4" />
+                </span>
+                {sentinelOpen ? (
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
                 )}
-              </div>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Zoek kaartlaag..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-[#D52B1E]/30 focus:border-[#D52B1E] transition-colors"
-                />
-              </div>
+                <span className="font-semibold text-sm text-[#1E293B] flex-1">Sentinel satelliet</span>
+              </button>
+
+              {sentinelOpen && (
+                <div className="px-4 pb-3 space-y-2 bg-gray-50/50">
+                  <select
+                    value={sentinelMode}
+                    onChange={(e) => setSentinelMode(e.target.value as SentinelLayerMode)}
+                    className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white"
+                  >
+                    <option value="S2_TRUE_COLOR">S2 True Color</option>
+                    <option value="S2_NDVI">S2 NDVI</option>
+                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={sentinelFromDate}
+                      onChange={(e) => setSentinelFromDate(e.target.value)}
+                      className="border border-gray-200 rounded-md px-2 py-1.5 text-xs bg-white"
+                    />
+                    <input
+                      type="date"
+                      value={sentinelToDate}
+                      onChange={(e) => setSentinelToDate(e.target.value)}
+                      className="border border-gray-200 rounded-md px-2 py-1.5 text-xs bg-white"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[11px] font-medium text-gray-600">
+                      Maximale bewolkingsgraad (%)
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={sentinelCloud}
+                      onChange={(e) => setSentinelCloud(Number(e.target.value))}
+                      disabled={false}
+                      className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white disabled:bg-gray-100"
+                      placeholder="Bijv. 20"
+                    />
+                    <p className="text-[11px] text-gray-500">
+                      Lager percentage = minder wolken, maar minder beschikbare beelden.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={renderSentinelOverlay}
+                      disabled={sentinelLoading}
+                      className="flex-1 bg-[#D52B1E] hover:bg-[#B91C1C] text-white rounded-md px-2.5 py-2 text-xs font-semibold disabled:opacity-60"
+                    >
+                      {sentinelLoading ? "Laden..." : "Render Sentinel"}
+                    </button>
+                    <button
+                      onClick={clearSentinelOverlay}
+                      className="border border-gray-200 bg-white hover:bg-gray-100 rounded-md px-2.5 py-2 text-xs font-medium"
+                    >
+                      Wissen
+                    </button>
+                  </div>
+                  {sentinelError && <div className="text-[11px] text-red-600">{sentinelError}</div>}
+                </div>
+              )}
             </div>
 
-            <div className="flex-1 overflow-y-auto">
-              <div className="border-b border-gray-100">
+            {filteredThemes.map((theme) => (
+              <div key={theme.id} className="border-b border-gray-100">
                 <button
-                  onClick={() => setSentinelOpen((prev) => !prev)}
+                  onClick={() => toggleTheme(theme.id)}
                   className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
                 >
-                  <span className="text-[#D52B1E]">
-                    <Satellite className="w-4 h-4" />
-                  </span>
-                  {sentinelOpen ? (
+                  <span className="text-[#D52B1E]">{iconMap[theme.icon]}</span>
+                  {expandedThemes.has(theme.id) ? (
                     <ChevronDown className="w-4 h-4 text-gray-400" />
                   ) : (
                     <ChevronRight className="w-4 h-4 text-gray-400" />
                   )}
-                  <span className="font-semibold text-sm text-[#1E293B] flex-1">Sentinel satelliet</span>
+                  <span className="font-semibold text-sm text-[#1E293B] flex-1">{theme.name}</span>
+                  <span className="text-xs text-gray-400">{theme.layers.length}</span>
                 </button>
 
-                {sentinelOpen && (
-                  <div className="px-4 pb-3 space-y-2 bg-gray-50/50">
-                    <select
-                      value={sentinelMode}
-                      onChange={(e) => setSentinelMode(e.target.value as SentinelLayerMode)}
-                      className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white"
-                    >
-                      <option value="S2_TRUE_COLOR">S2 True Color</option>
-                      <option value="S2_NDVI">S2 NDVI</option>
-                    </select>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input
-                        type="date"
-                        value={sentinelFromDate}
-                        onChange={(e) => setSentinelFromDate(e.target.value)}
-                        className="border border-gray-200 rounded-md px-2 py-1.5 text-xs bg-white"
-                      />
-                      <input
-                        type="date"
-                        value={sentinelToDate}
-                        onChange={(e) => setSentinelToDate(e.target.value)}
-                        className="border border-gray-200 rounded-md px-2 py-1.5 text-xs bg-white"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[11px] font-medium text-gray-600">
-                        Maximale bewolkingsgraad (%)
+                {expandedThemes.has(theme.id) && (
+                  <div className="pb-1 bg-gray-50/50">
+                    {theme.layers.map((layer) => (
+                      <label
+                        key={layer.id}
+                        className="flex items-center gap-3 px-4 pl-12 py-2.5 hover:bg-gray-100/80 cursor-pointer transition-colors"
+                      >
+                        <div className="relative shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={activeLayers.has(layer.id)}
+                            onChange={() => toggleLayer(layer)}
+                            className="sr-only"
+                          />
+                          <div
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                              activeLayers.has(layer.id)
+                                ? "border-[#D52B1E] bg-[#D52B1E] scale-105"
+                                : "border-gray-300 bg-white"
+                            }`}
+                          >
+                            {activeLayers.has(layer.id) && (
+                              <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
+                                <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            )}
+                          </div>
+                        </div>
+                        <div className="w-3 h-3 rounded-full shrink-0 ring-1 ring-black/10" style={{ backgroundColor: layer.color }} />
+                        <span className="text-sm text-[#374151] flex-1">{layer.name}</span>
+                        {loadingLayers.has(layer.id) && (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D52B1E] ml-auto shrink-0" />
+                        )}
                       </label>
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={sentinelCloud}
-                        onChange={(e) => setSentinelCloud(Number(e.target.value))}
-                        disabled={false}
-                        className="w-full border border-gray-200 rounded-md px-2.5 py-2 text-sm bg-white disabled:bg-gray-100"
-                        placeholder="Bijv. 20"
-                      />
-                      <p className="text-[11px] text-gray-500">
-                        Lager percentage = minder wolken, maar minder beschikbare beelden.
-                      </p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={renderSentinelOverlay}
-                        disabled={sentinelLoading}
-                        className="flex-1 bg-[#D52B1E] hover:bg-[#B91C1C] text-white rounded-md px-2.5 py-2 text-xs font-semibold disabled:opacity-60"
-                      >
-                        {sentinelLoading ? "Laden..." : "Render Sentinel"}
-                      </button>
-                      <button
-                        onClick={clearSentinelOverlay}
-                        className="border border-gray-200 bg-white hover:bg-gray-100 rounded-md px-2.5 py-2 text-xs font-medium"
-                      >
-                        Wissen
-                      </button>
-                    </div>
-                    {sentinelError && <div className="text-[11px] text-red-600">{sentinelError}</div>}
+                    ))}
                   </div>
                 )}
               </div>
-
-              {filteredThemes.map((theme) => (
-                <div key={theme.id} className="border-b border-gray-100">
-                  <button
-                    onClick={() => toggleTheme(theme.id)}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
-                  >
-                    <span className="text-[#D52B1E]">{iconMap[theme.icon]}</span>
-                    {expandedThemes.has(theme.id) ? (
-                      <ChevronDown className="w-4 h-4 text-gray-400" />
-                    ) : (
-                      <ChevronRight className="w-4 h-4 text-gray-400" />
-                    )}
-                    <span className="font-semibold text-sm text-[#1E293B] flex-1">{theme.name}</span>
-                    <span className="text-xs text-gray-400">{theme.layers.length}</span>
-                  </button>
-
-                  {expandedThemes.has(theme.id) && (
-                    <div className="pb-1 bg-gray-50/50">
-                      {theme.layers.map((layer) => (
-                        <label
-                          key={layer.id}
-                          className="flex items-center gap-3 px-4 pl-12 py-2.5 hover:bg-gray-100/80 cursor-pointer transition-colors"
-                        >
-                          <div className="relative shrink-0">
-                            <input
-                              type="checkbox"
-                              checked={activeLayers.has(layer.id)}
-                              onChange={() => toggleLayer(layer)}
-                              className="sr-only"
-                            />
-                            <div
-                              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                                activeLayers.has(layer.id)
-                                  ? "border-[#D52B1E] bg-[#D52B1E] scale-105"
-                                  : "border-gray-300 bg-white"
-                              }`}
-                            >
-                              {activeLayers.has(layer.id) && (
-                                <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
-                                  <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              )}
-                            </div>
-                          </div>
-                          <div className="w-3 h-3 rounded-full shrink-0 ring-1 ring-black/10" style={{ backgroundColor: layer.color }} />
-                          <span className="text-sm text-[#374151] flex-1">{layer.name}</span>
-                          {loadingLayers.has(layer.id) && (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D52B1E] ml-auto shrink-0" />
-                          )}
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            <div className="p-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 shrink-0">
-              {activeAhnDebug.length > 0 && (
-                <div className="mb-2 space-y-1">
-                  <div className="font-semibold text-gray-700">AHN actieve bronlagen</div>
-                  {activeAhnDebug.map((item) => (
-                    <div key={item.layerId}>
-                      {item.layerName}: {item.sourceLayer}
-                    </div>
-                  ))}
-                </div>
-              )}
-              Data:{" "}
-              <a href="https://data.haarlem.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
-                data.haarlem.nl
-              </a>{" "}
-              +{" "}
-              <a href="https://www.ahn.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
-                ahn.nl
-              </a>
-            </div>
+            ))}
           </div>
 
-          <div className="hidden lg:flex flex-col w-[360px] border-l border-gray-200 overflow-hidden">
-            <div className="p-4 border-b border-gray-100 shrink-0">
-              <div className="flex items-center gap-2 mb-1">
-                <Layers className="w-5 h-5 text-[#D52B1E]" />
-                <h2 className="font-bold text-[#1E293B] text-base">Extra kaarten</h2>
-              </div>
-              <div className="text-[11px] text-gray-500">
-                勾选后在侧栏中嵌入 Haarlem KaartGallery
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
-                <div className="p-3 bg-gray-50 border-b border-gray-200">
-                  <div className="text-xs font-semibold text-[#1E293B]">Embedded tools</div>
-                </div>
-                <div className="p-3 space-y-3">
-                  <div>
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={embedMap113Enabled}
-                        onChange={(e) => setEmbedMap113Enabled(e.target.checked)}
-                        className="sr-only"
-                      />
-                      <div
-                        className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                          embedMap113Enabled
-                            ? "border-[#D52B1E] bg-[#D52B1E] scale-105"
-                            : "border-gray-300 bg-white"
-                        }`}
-                      >
-                        {embedMap113Enabled && (
-                          <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </div>
-                      <span className="text-sm text-[#374151] flex-1">Funderingsloket (map/113)</span>
-                    </label>
-                    {embedMap113Enabled && (
-                      <div className="mt-3 rounded-md border border-gray-200 overflow-hidden">
-                        <iframe title="Funderingsloket" src={EMBED_MAP_113_URL} className="w-full h-[260px] bg-white" />
-                      </div>
-                    )}
+          <div className="p-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 shrink-0">
+            {activeAhnDebug.length > 0 && (
+              <div className="mb-2 space-y-1">
+                <div className="font-semibold text-gray-700">AHN actieve bronlagen</div>
+                {activeAhnDebug.map((item) => (
+                  <div key={item.layerId}>
+                    {item.layerName}: {item.sourceLayer}
                   </div>
-
-                  <div>
-                    <label className="flex items-center gap-3 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={embedMap18Enabled}
-                        onChange={(e) => setEmbedMap18Enabled(e.target.checked)}
-                        className="sr-only"
-                      />
-                      <div
-                        className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                          embedMap18Enabled
-                            ? "border-[#D52B1E] bg-[#D52B1E] scale-105"
-                            : "border-gray-300 bg-white"
-                        }`}
-                      >
-                        {embedMap18Enabled && (
-                          <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none">
-                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        )}
-                      </div>
-                      <span className="text-sm text-[#374151] flex-1">Overzicht (map/18)</span>
-                    </label>
-                    {embedMap18Enabled && (
-                      <div className="mt-3 rounded-md border border-gray-200 overflow-hidden">
-                        <iframe title="Overzicht kaart" src={EMBED_MAP_18_URL} className="w-full h-[260px] bg-white" />
-                      </div>
-                    )}
-                  </div>
-                </div>
+                ))}
               </div>
-            </div>
+            )}
+            Data:{" "}
+            <a href="https://data.haarlem.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
+              data.haarlem.nl
+            </a>{" "}
+            +{" "}
+            <a href="https://www.ahn.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
+              ahn.nl
+            </a>
           </div>
         </div>
 
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className={`absolute z-30 bg-white shadow-lg rounded-r-lg p-2.5 hover:bg-gray-50 transition-all duration-300 ease-in-out border border-l-0 border-gray-200 top-3 ${
-            sidebarOpen ? "left-80 lg:left-[720px]" : "left-0"
+            sidebarOpen ? "left-80 lg:left-[360px]" : "left-0"
           }`}
           aria-label={sidebarOpen ? "Paneel sluiten" : "Paneel openen"}
         >
