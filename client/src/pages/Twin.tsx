@@ -295,6 +295,7 @@ export default function Twin() {
   const [sentinelCloud, setSentinelCloud] = useState(20);
   const [sentinelLoading, setSentinelLoading] = useState(false);
   const [sentinelError, setSentinelError] = useState<string | null>(null);
+  const [meerHaarlemDataOpen, setMeerHaarlemDataOpen] = useState(false);
 
   const toggleTheme = useCallback((themeId: string) => {
     setExpandedThemes((prev) => {
@@ -905,6 +906,65 @@ export default function Twin() {
                 )}
               </div>
             ))}
+
+            <div className="border-b border-gray-100">
+              <button
+                onClick={() => setMeerHaarlemDataOpen((v) => !v)}
+                className="w-full flex items-center gap-2.5 px-4 py-3 hover:bg-gray-50 transition-colors text-left"
+              >
+                <MapPin className="w-4 h-4 text-[#D52B1E]" />
+                {meerHaarlemDataOpen ? (
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                )}
+                <span className="font-semibold text-sm text-[#1E293B] flex-1">Meer Haarlem-data</span>
+              </button>
+
+              {meerHaarlemDataOpen && (
+                <div className="pb-1 bg-gray-50/50">
+                  <div className="space-y-1.5">
+                    {[
+                      {
+                        title: "Bekijk Haarlem op de kaart",
+                        description: "Open de officiele kaartomgeving met themakaarten van Haarlem.",
+                        href: HAARLEM_KAART_URL,
+                        primary: true,
+                      },
+                      {
+                        title: "Open data",
+                        description: "Lees meer over open datasets en geo-informatie van de gemeente Haarlem.",
+                        href: HAARLEM_OPEN_DATA_URL,
+                      },
+                      {
+                        title: "Haarlem in cijfers",
+                        description: "Bekijk dashboards en statistieken over inwoners, wonen en leefomgeving.",
+                        href: HAARLEM_CIJFERS_URL,
+                      },
+                    ].map((service) => (
+                      <a
+                        key={service.title}
+                        href={service.href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block px-4 pl-12 py-2.5 hover:bg-gray-100/80 transition-colors"
+                      >
+                        <div
+                          className={`text-sm ${
+                            service.primary ? "text-[#D52B1E] font-semibold" : "text-[#374151]"
+                          }`}
+                        >
+                          {service.title}
+                        </div>
+                        <div className="mt-0.5 text-[11px] text-gray-500 leading-relaxed">
+                          {service.description}
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="p-3 border-t border-gray-100 bg-gray-50 text-xs text-gray-500 shrink-0">
@@ -918,60 +978,6 @@ export default function Twin() {
                 ))}
               </div>
             )}
-
-            <div className="mb-2">
-              <div className="flex items-center gap-2 mb-1">
-                <MapPin className="w-4 h-4 text-[#D52B1E]" />
-                <span className="font-semibold text-sm text-[#1E293B]">Meer Haarlem-data</span>
-              </div>
-              <div className="text-[11px] leading-relaxed">
-                Handige officiele ingangen naar kaarten, open data en cijfers van de gemeente Haarlem.
-              </div>
-            </div>
-
-            <div className="space-y-2 mb-2">
-              {[
-                {
-                  title: "Bekijk Haarlem op de kaart",
-                  description: "Open de officiele kaartomgeving met themakaarten van Haarlem.",
-                  href: HAARLEM_KAART_URL,
-                  primary: true,
-                },
-                {
-                  title: "Open data",
-                  description: "Lees meer over open datasets en geo-informatie van de gemeente Haarlem.",
-                  href: HAARLEM_OPEN_DATA_URL,
-                },
-                {
-                  title: "Haarlem in cijfers",
-                  description: "Bekijk dashboards en statistieken over inwoners, wonen en leefomgeving.",
-                  href: HAARLEM_CIJFERS_URL,
-                },
-              ].map((service) => (
-                <a
-                  key={service.title}
-                  href={service.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`block rounded-md border px-3 py-2 transition-colors ${
-                    service.primary
-                      ? "border-[#D52B1E] bg-[#D52B1E] text-white hover:bg-[#B91C1C]"
-                      : "border-gray-200 bg-white hover:bg-gray-50"
-                  }`}
-                >
-                  <div className={`text-xs font-semibold ${service.primary ? "text-white" : "text-[#1E293B]"}`}>
-                    {service.title}
-                  </div>
-                  <div
-                    className={`mt-1 text-[11px] leading-relaxed ${
-                      service.primary ? "text-white/85" : "text-gray-500"
-                    }`}
-                  >
-                    {service.description}
-                  </div>
-                </a>
-              ))}
-            </div>
 
               Bronnen:{" "}
             <a href="https://data.haarlem.nl" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">
